@@ -1,0 +1,28 @@
+{
+ "timezone": "America/New_York",
+ "weekly": [
+  {
+   "id": "w1",
+   "day": 6,
+   "time": "09:00",
+   "scope": "all",
+   "enabled": true,
+   "label": "정기 청소"
+  }
+ ],
+ "oneoff": [
+  {
+   "id": "o1",
+   "date": "2026-12-23",
+   "time": "14:00",
+   "scope": "front",
+   "label": "성탄 전 앞쪽 추가 청소"
+  }
+ ],
+ "blackout": [
+  {
+   "date": "2026-11-28",
+   "reason": "추수감사 연합 행사 (토요일 본당 사용)"
+  }
+ ]
+}

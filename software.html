@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>청소 로봇 소프트웨어 설계</title>
+<meta name="description" content="본당 청소 로봇 소프트웨어: 서비스 구성, 상태도, 시퀀스, 데이터 흐름, 알고리즘, API, DB, Docker 시뮬레이션">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@600;700&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+<style>td code{white-space:nowrap} .fig.tall svg{min-width:720px}</style>
+</head>
+<body>
+<header class="topnav"><div class="in">
+  <a class="brand" href="index.html"><svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#7f8f63"/><circle cx="13" cy="13" r="4" fill="#fff"/><path d="M13 2v4" stroke="#fff" stroke-width="2"/></svg>본당 청소 로봇</a>
+  <nav aria-label="페이지">
+    <a href="index.html">성도 페이지</a><a href="overview.html">도입 안내</a><a href="architecture.html">아키텍처</a><a href="software.html" aria-current="page">소프트웨어</a><a href="hardware.html">하드웨어</a><a href="maintain.html">관리</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <span class="audience">개발자용 · <a href="architecture.html">아키텍처</a>의 하위 문서</span>
+  <h1>청소 로봇 소프트웨어 설계</h1>
+  <p class="lede">엣지 서버의 서비스 구성부터 상태 기계, 메시지 흐름, 알고리즘, 저장 구조, Windows 11 Docker 개발 환경까지 정리했습니다. 이 저장소의 <code>assets/js/sim.js</code>는 아래 규칙을 브라우저에서 그대로 흉내 낸 참조 구현입니다.</p>
+  <nav class="toc" aria-label="목차">
+    <a href="#svc">1 서비스</a><a href="#rsm">2 로봇 상태도</a><a href="#msm">3 미션 상태도</a><a href="#door">4 문 뮤텍스</a><a href="#seq">5 시퀀스</a><a href="#dfd">6 데이터 흐름</a><a href="#algo">7 알고리즘</a><a href="#fusion">8 위치 융합</a><a href="#db">9 DB</a><a href="#api">10 API·MQTT</a><a href="#repo">11 저장소·설정</a><a href="#dev">12 Windows 11 개발</a><a href="#test">13 테스트</a>
+  </nav>
+
+  <section class="sec" id="svc">
+    <div class="secnum">1 · 서비스</div>
+    <h2>Docker Compose 서비스와 프로필</h2>
+    <div class="fig wide"><svg id="dSvc" viewBox="0 0 1000 470" role="img" aria-label="Docker 서비스 구성"></svg></div>
+    <div class="tbl"><table>
+      <thead><tr><th>서비스</th><th>이미지 / 언어</th><th>역할</th><th>프로필</th></tr></thead>
+      <tbody>
+        <tr><td><code>fleet</code></td><td>Python 3.12, asyncio</td><td>미션 실행, 구역 배정, 재배분, 문 뮤텍스, 배터리 판단</td><td>공통</td></tr>
+        <tr><td><code>scheduler</code></td><td>Python, APScheduler</td><td>주간·1회 일정, 제외일, 사전 점검 트리거</td><td>공통</td></tr>
+        <tr><td><code>tracker</code></td><td>Python, OpenCV, pupil-apriltags</td><td>RTSP 프레임 → 태그 검출 → F 좌표, 5 fps</td><td>공통</td></tr>
+        <tr><td><code>fusion</code></td><td>Python, NumPy</td><td>카메라 위치 + 로봇 자체 위치 칼만 필터, 20 Hz 출력</td><td>공통</td></tr>
+        <tr><td><code>coverage</code></td><td>Python, NumPy</td><td>10 cm 격자 청소 칠하기, 청소율 계산</td><td>공통</td></tr>
+        <tr><td><code>api</code></td><td>FastAPI, uvicorn</td><td>REST, WebSocket, 공개 상태 JSON</td><td>공통</td></tr>
+        <tr><td><code>mosquitto</code>, <code>db</code></td><td>eclipse-mosquitto, postgres:16</td><td>내부 메시지, 기록</td><td>공통</td></tr>
+        <tr><td><code>homeassistant</code></td><td>home-assistant</td><td>Matter 컨트롤러, dreame_vacuum 통합</td><td>site</td></tr>
+        <tr><td><code>go2rtc</code>, <code>cloudflared</code></td><td>공식 이미지</td><td>카메라 중계(관리자 영상), 외부 터널</td><td>site</td></tr>
+        <tr><td><code>sim-world</code>, <code>sim-bridge</code>, <code>fake-cams</code>, <code>novnc</code></td><td>ROS 2 Jazzy, Gazebo Harmonic</td><td>가상 본당·로봇 3대·가상 천장 카메라</td><td>sim</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="sec" id="rsm">
+    <div class="secnum">2 · 로봇 상태도</div>
+    <h2>로봇 한 대의 상태 기계 (Fleet가 관리)</h2>
+    <div class="fig tall"><svg id="dRobot" viewBox="0 0 1000 570" role="img" aria-label="로봇 상태 기계"></svg></div>
+    <div class="tbl"><table>
+      <thead><tr><th>상태</th><th>들어가는 조건</th><th>Fleet가 하는 일</th><th>나가는 조건</th></tr></thead>
+      <tbody>
+        <tr><td><code>DOCKED</code></td><td>도크 도착 + 비움 완료</td><td>충전 확인</td><td>미션 시작, 출발 순서 도래</td></tr>
+        <tr><td><code>QUEUED</code></td><td>미션 디스패치</td><td>출발 지연 (R3 0 s → R2 30 s → R1 60 s)</td><td>지연 끝</td></tr>
+        <tr><td><code>EXITING</code></td><td>출발 명령</td><td>문 뮤텍스 요청, Matter <code>start</code> + 구역 지정</td><td>뒤쪽 통로 도착</td></tr>
+        <tr><td><code>CLEANING</code></td><td>자기 구역 줄 시작</td><td>진행률 추적, 정체 감지 (90 s 위치 변화 &lt; 0.2 m)</td><td>자기 줄 소진 / 배터리 / 오류</td></tr>
+        <tr><td><code>HELPING</code></td><td>남의 구역 줄을 가져옴</td><td>원 소유 로봇 큐에서 앞줄 pop</td><td>가져올 줄 없음</td></tr>
+        <tr><td><code>WAIT_DOOR</code></td><td>문 잠금 실패</td><td>Matter <code>pause</code>, FIFO 대기열</td><td>잠금 획득 → <code>resume</code></td></tr>
+        <tr><td><code>RETURNING</code></td><td>줄 없음, 관리자 복귀, 배터리 &lt; 25%</td><td>Matter <code>return_to_base</code>, 문 뮤텍스</td><td>도크 도착</td></tr>
+        <tr><td><code>EMPTYING</code></td><td>도크 도착</td><td>비움 이벤트 대기 (도크 3대 순차, 전원 보호)</td><td>비움 완료</td></tr>
+        <tr><td><code>CHARGE_RESUME</code></td><td>배터리 부족 복귀</td><td>80%까지 충전 대기, 남은 줄 유지</td><td>80% → <code>EXITING</code></td></tr>
+        <tr><td><code>ERROR</code></td><td>로봇 오류 코드, 정체, 바퀴 걸림</td><td>관리자 알림, 남은 줄을 다른 로봇에 재배분</td><td>관리자 해제</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="sec" id="msm">
+    <div class="secnum">3 · 미션 상태도</div>
+    <h2>토요일 청소 한 번 = 미션 하나</h2>
+    <div class="fig wide"><svg id="dMission" viewBox="0 0 1000 310" role="img" aria-label="미션 상태 기계"></svg></div>
+    <p class="small">사전 점검 항목: 로봇 3대 온라인·배터리 ≥ 90%·오류 없음, 도크 먼지봉투 &lt; 90%, 뒷문 열림(CAM4 영상에서 문틀 영역 판별), 오늘이 제외일 아님, 본당 안 사람 없음(카메라 움직임 감지, 선택). 실패하면 <code>BLOCKED</code>로 가서 관리자에게 알리고 30분마다 다시 점검, 2시간 지나면 <code>SKIPPED</code>.</p>
+  </section>
+
+  <section class="sec" id="door">
+    <div class="secnum">4 · 문 뮤텍스</div>
+    <h2>뒷문은 한 번에 한 대</h2>
+    <div class="grid2">
+      <div class="fig"><svg id="dDoor" viewBox="0 0 480 300" role="img" aria-label="문 뮤텍스 상태도"></svg></div>
+      <div>
+<pre class="code"><span class="c"># fleet/door.py (요지)</span>
+<span class="k">class</span> DoorMutex:
+    holder: str | None = None
+    queue: deque[str]          <span class="c"># FIFO</span>
+
+    <span class="k">def</span> request(self, rid) -> bool:
+        <span class="k">if</span> rid <span class="k">not in</span> self.queue: self.queue.append(rid)
+        <span class="k">if</span> self.holder <span class="k">is None and</span> self.queue[0] == rid:
+            self.holder = self.queue.popleft()
+            <span class="k">return True</span>
+        <span class="k">return False</span>            <span class="c"># 호출자는 pause 후 대기</span>
+
+    <span class="k">def</span> release(self, rid):     <span class="c"># 태그가 문 영역을 0.6 m 벗어나면</span>
+        <span class="k">if</span> self.holder == rid: self.holder = None
+
+    <span class="k">def</span> watchdog(self, now):   <span class="c"># 90 s 넘게 점유 → 강제 해제 + 경고</span>
+        ...</pre>
+        <p class="small muted" style="margin-top:8px">문 영역은 F 좌표 사각형 <code>x 1.6–3.0, y 17.2–18.6</code>. 잠금 요청은 로봇이 문 0.8 m 앞에 왔을 때, 해제는 태그(또는 융합 위치)가 반대쪽 0.6 m를 지났을 때.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="seq">
+    <div class="secnum">5 · 시퀀스</div>
+    <h2>정기 청소 시작부터 기록까지</h2>
+    <div class="fig wide"><svg id="dSeq1" role="img" aria-label="정기 청소 시퀀스 다이어그램"></svg></div>
+    <h3 style="margin-top:6px">재배분과 문 대기</h3>
+    <div class="fig wide"><svg id="dSeq2" role="img" aria-label="재배분과 문 대기 시퀀스"></svg></div>
+  </section>
+
+  <section class="sec" id="dfd">
+    <div class="secnum">6 · 데이터 흐름</div>
+    <h2>프레임에서 성도 페이지 숫자까지</h2>
+    <div class="fig wide"><svg id="dDfd" viewBox="0 0 1000 440" role="img" aria-label="데이터 흐름도"></svg></div>
+    <div class="tbl"><table>
+      <thead><tr><th>흐름</th><th class="r">주기</th><th class="r">크기</th><th>지연 목표</th></tr></thead>
+      <tbody>
+        <tr><td>카메라 프레임 (4대, 4K → 1/2 축소 후 검출)</td><td class="r">5 fps</td><td class="r">로컬만</td><td>&lt; 150 ms</td></tr>
+        <tr><td><code>tag/detections</code></td><td class="r">5 Hz × 4</td><td class="r">~200 B</td><td>&lt; 200 ms</td></tr>
+        <tr><td><code>robot/{id}/state</code> (HA → MQTT)</td><td class="r">변화 시 + 10 s</td><td class="r">~400 B</td><td>&lt; 1 s</td></tr>
+        <tr><td><code>robot/{id}/pose</code> (융합)</td><td class="r">20 Hz</td><td class="r">~120 B</td><td>&lt; 250 ms</td></tr>
+        <tr><td>WebSocket → 관리 페이지</td><td class="r">5 Hz 묶음</td><td class="r">~1 KB</td><td>&lt; 500 ms</td></tr>
+        <tr><td>공개 상태 JSON</td><td class="r">청소 중 30 s, 평소 10 min</td><td class="r">~1 KB</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="sec" id="algo">
+    <div class="secnum">7 · 알고리즘</div>
+    <h2>구역, 줄, 재배분, 청소율</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>줄(pass) 만들기</h3>
+<pre class="code"><span class="k">for</span> y <span class="k">in</span> arange(D - r - 0.03, zone.y_front, -0.33):
+    iv = free_intervals(zone.x1, zone.x2, y,
+                        margin = r + 0.03)      <span class="c"># 금지 구역 빼기</span>
+    iv = [s <span class="k">for</span> s <span class="k">in</span> iv <span class="k">if</span> reachable(mid(s), y)] <span class="c"># 문에서 이어진 칸</span>
+    passes.append(longest(iv))               <span class="c"># 뒤 → 앞 순서</span></pre>
+        <p class="small muted" style="margin-top:6px">r = 0.175 m, 간격 0.33 m (흡입 폭 0.35 m보다 약간 좁게 겹침). 실제 로봇에는 줄 대신 "구역 사각형 + 방향"으로 넘기고, 줄은 서버의 진행률 계산과 재배분 단위로만 씁니다.</p>
+      </div>
+      <div class="card">
+        <h3>재배분 (work stealing)</h3>
+<pre class="code"><span class="k">def</span> next_pass(robot):
+    p = robot.queue.popleft()            <span class="c"># 자기 줄: 뒤부터</span>
+    <span class="k">if</span> p: <span class="k">return</span> p
+    victim = max(others, key=len(queue))
+    <span class="k">if</span> len(victim.queue) >= 3:
+        <span class="k">return</span> victim.queue.pop()       <span class="c"># 남의 줄: 앞부터</span>
+    <span class="k">return None</span>                          <span class="c"># → RETURNING</span></pre>
+        <p class="small muted" style="margin-top:6px">양쪽 끝에서 가져가므로 두 로봇이 같은 줄에서 마주치지 않습니다. 시뮬레이션에서 R1이 약 47분에 끝나 다른 구역 앞줄을 도와, 전체 시간이 약 75분 → 67분으로 줄었습니다.</p>
+      </div>
+      <div class="card">
+        <h3>청소율</h3>
+        <ul class="plain small">
+          <li>바닥 20 × 18 m를 10 cm 칸 36,000개로 나눔.</li>
+          <li><b>분모</b>: 로봇 중심이 문에서 이어져 갈 수 있는 칸(벽·금지 구역에서 r만큼 떨어진 칸)을 flood fill → 반지름 r로 팽창. 약 234 m².</li>
+          <li><b>분자</b>: 융합 위치를 5 cm마다 찍어 반지름 r 원 안의 칸을 칠함. 태그가 보인 구간은 <code>confirmed</code>, 가려진 구간은 <code>estimated</code>.</li>
+          <li>공개 청소율 = (confirmed + estimated) ÷ 분모. 관리 페이지에는 둘을 나눠 표시.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>정체·오류 감지</h3>
+        <ul class="plain small">
+          <li>90 s 동안 이동 &lt; 0.2 m이고 상태가 <code>cleaning</code> → <code>STUCK</code> 경고.</li>
+          <li>HA 오류 엔터티(바퀴 걸림, 브러시 엉킴, 낭떠러지) → <code>ERROR</code>.</li>
+          <li>금지 구역 안쪽 0.3 m로 들어감 → 즉시 <code>pause</code> + 경고 (가상 벽 설정 확인 필요).</li>
+          <li>로봇끼리 0.6 m 안 + 서로 접근 중 → 뒤 로봇 5 s <code>pause</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="fusion">
+    <div class="secnum">8 · 위치 융합</div>
+    <h2>카메라 + 로봇 자체 위치 칼만 필터</h2>
+    <div class="grid2">
+      <div class="fig"><svg id="dKf" viewBox="0 0 480 330" role="img" aria-label="칼만 필터 블록도"></svg></div>
+      <div class="card">
+        <ul class="plain small">
+          <li>상태 <code>x = [px, py, vx, vy, θ]</code>, 등속 모델, 20 Hz 예측.</li>
+          <li>카메라 측정 <code>z_cam = (px, py, θ)</code>, R = (σ_cam)², σ_cam은 <a href="architecture.html#tag">오차 모델</a>에서 위치별로 계산 (약 1.2–2.0 cm).</li>
+          <li>로봇 자체 위치 <code>z_rob = T_k(p_dreame)</code>, R = (8 cm)², HA가 줄 때만 (보통 2–5 s 간격).</li>
+          <li>의자 밑 제약: 위치가 의자 영역이면 의자 좌우 다리 사이(±5 cm)로 투영.</li>
+          <li>측정 시각은 RTSP 타임스탬프(NTP 동기)로 맞추고, 늦게 온 측정은 상태를 되감아 다시 적용.</li>
+          <li>3 s 넘게 측정이 없으면 공분산이 커지고, 관리 페이지에 "추정" 표시.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="db">
+    <div class="secnum">9 · DB</div>
+    <h2>PostgreSQL 테이블</h2>
+    <div class="fig wide"><svg id="dDb" viewBox="0 0 1000 300" role="img" aria-label="데이터베이스 관계도"></svg></div>
+  </section>
+
+  <section class="sec" id="api">
+    <div class="secnum">10 · API · MQTT</div>
+    <h2>밖으로 보이는 계약</h2>
+    <div class="grid2">
+      <div class="tbl"><table>
+        <thead><tr><th>REST</th><th>설명</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET /public/status</code></td><td>성도 페이지용. 상태, 마지막·다음 청소 (CORS: benchvue.github.io)</td></tr>
+          <tr><td><code>GET /public/history?weeks=12</code></td><td>최근 기록</td></tr>
+          <tr><td><code>GET /public/coverage.png</code></td><td>마지막 청소 칸 지도 (도면 좌표)</td></tr>
+          <tr><td><code>GET /admin/robots</code></td><td>로봇 상태, 소모품, 오류</td></tr>
+          <tr><td><code>POST /admin/mission</code></td><td><code>{"scope":"all"|"front"|["1열",…]}</code> 지금 시작</td></tr>
+          <tr><td><code>POST /admin/return_all</code>, <code>/admin/estop</code></td><td>모두 복귀, 긴급 정지 / 해제</td></tr>
+          <tr><td><code>GET·PUT /admin/schedule</code></td><td>schedule.json 형식</td></tr>
+          <tr><td><code>POST /admin/consumables/{robot}/{part}/reset</code></td><td>교체 기록</td></tr>
+          <tr><td><code>WS /ws</code></td><td>pose·state·event 묶음 5 Hz</td></tr>
+        </tbody>
+      </table></div>
+      <div class="tbl"><table>
+        <thead><tr><th>MQTT 토픽</th><th>발행 → 구독</th></tr></thead>
+        <tbody>
+          <tr><td><code>church/robot/{id}/state</code></td><td>dreame-adapter → fleet, api</td></tr>
+          <tr><td><code>church/robot/{id}/cmd</code></td><td>fleet → dreame-adapter / sim-bridge</td></tr>
+          <tr><td><code>church/tag/detections</code></td><td>tracker → fusion</td></tr>
+          <tr><td><code>church/robot/{id}/pose</code></td><td>fusion → fleet, coverage, api</td></tr>
+          <tr><td><code>church/door</code></td><td>fleet → api (holder, queue)</td></tr>
+          <tr><td><code>church/mission</code></td><td>fleet → api, coverage (상태 변화)</td></tr>
+          <tr><td><code>church/event</code></td><td>모두 → api, db (로그)</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+<pre class="code"><span class="c">// church/robot/R2/pose   (20 Hz, QoS 0)</span>
+{"t":"2026-10-17T09:31:12.250-04:00","x":9.41,"y":12.06,"th":1.571,
+ "sigma":0.014,"src":"cam","visible":true,"under_chair":false}
+
+<span class="c">// GET /public/status   (index.html 이 읽는 형식 = data/status.json)</span>
+{"state":"cleaning","updated":"…","last":{"date":"2026-10-10","runtime_min":77,"coverage":0.938,"area_m2":219},
+ "next":{"date":"2026-10-17","time":"09:00"},"now":{"progress":0.41,"robots":[{"id":"R1","x":3.2,"y":12.9,"state":"cleaning","battery":81}]}}</pre>
+  </section>
+
+  <section class="sec" id="repo">
+    <div class="secnum">11 · 저장소 · 설정</div>
+    <h2>github.com/benchvue/cleaning</h2>
+    <div class="grid2">
+<pre class="code">cleaning/
+├─ index.html          <span class="c"># 성도 (GitHub Pages)</span>
+├─ overview.html       <span class="c"># 교역자·관리부</span>
+├─ architecture.html   <span class="c"># 개발: 전체 · 오차 분석</span>
+├─ software.html  hardware.html
+├─ maintain.html       <span class="c"># 관리 (인증 예정)</span>
+├─ assets/  css · js(layout, sim, diagram) · img
+├─ data/    status.json · history.json · schedule.json
+├─ README.md
+└─ edge/               <span class="c"># 다음 단계: 서버 코드</span>
+   ├─ docker-compose.yml
+   ├─ config/sanctuary.yaml   <span class="c"># layout.js 와 같은 값</span>
+   ├─ fleet/ scheduler/ tracker/ fusion/ coverage/ api/
+   ├─ adapters/ dreame_ha.py · sim_bridge.py
+   └─ sim/  ros2_ws · worlds/sanctuary.sdf (자동 생성)</pre>
+<pre class="code"><span class="c"># edge/config/sanctuary.yaml</span>
+room: {width: 20.0, depth: 18.0}     <span class="c"># 실측 후 갱신</span>
+chair: {pitch: 0.50, depth: 0.50, row_pitch: 0.90,
+        leg_inner_w: 0.455, leg_inner_d: 0.45}
+columns:
+  - {name: 1열, counts: [3,4,6,7,8,9,9,9,9], anchor: right, x: 5.4, y: 7.9}
+  - {name: 2열, counts: [5,5,5,5,5,5,5,5,5], anchor: left,  x: 6.6, y: 7.9}
+  - {name: 3열, counts: [5,5,5,5,5,5,5,5,5], anchor: left,  x: 10.3, y: 7.9}
+  - {name: 4열, counts: [3,4,6,7,8,9,10],    anchor: left,  x: 14.0, y: 9.7}
+  - {name: 5열, counts: [4,5,6,7], anchor: right, x: 19.4, y: 5.6, rot: -22}
+no_go:
+  - {name: 강단, rect: [0, 0, 20, 4.6]}
+  - {name: 강대상 계단, rect: [6.7, 4.6, 6.8, 2.0]}
+  - {name: 피아노, rect: [1.6, 4.6, 3.4, 1.6]}
+  - {name: 드럼·키보드, rect: [0, 6.2, 2.6, 2.1]}
+robots:
+  R1: {tag: 0, zone: [0.2, 5.9], front: 4.85, dock: [4.6, 18.9]}
+  R2: {tag: 1, zone: [6.1, 13.6], front: 6.9,  dock: [5.9, 18.9]}
+  R3: {tag: 2, zone: [13.9, 19.8], front: 4.8, dock: [7.2, 18.9]}
+door: {x: [1.6, 3.0], y: 18.0}
+cameras: {height: 6.0, grid: [2, 2], res: 3840, hfov: 103, vfov: 56}</pre>
+    </div>
+  </section>
+
+  <section class="sec" id="dev">
+    <div class="secnum">12 · Windows 11 개발</div>
+    <h2>Docker Desktop(WSL2)에서 본당과 로봇 3대 띄우기</h2>
+    <div class="fig wide"><svg id="dDev" viewBox="0 0 1000 360" role="img" aria-label="Windows 11 Docker 개발 환경"></svg></div>
+    <div class="grid2">
+      <div class="card"><h3>설치 순서</h3>
+        <ol class="steps small">
+          <li><code>wsl --install</code> 후 재부팅</li>
+          <li>Docker Desktop, WSL2 백엔드, 메모리 16 GB 이상</li>
+          <li>WSL 안에서 <code>git clone https://github.com/benchvue/cleaning</code></li>
+          <li><code>cd cleaning/edge && docker compose --profile sim up</code></li>
+          <li>브라우저: <code>localhost:6080</code>(Gazebo), <code>localhost:8080</code>(웹), <code>localhost:8000/docs</code>(API)</li>
+        </ol></div>
+      <div class="card"><h3>지금 바로 되는 것</h3>
+        <ul class="plain small">
+          <li>저장소 루트에서 <code>python -m http.server 8000</code> → 모든 페이지와 브라우저 시뮬레이션(<code>sim.js</code>)이 서버 없이 동작</li>
+          <li><code>layout.js</code>의 숫자를 바꾸면 성도 페이지, 관리 페이지, 오차 지도가 함께 바뀜</li>
+          <li>Gazebo 월드는 다음 단계에서 <code>sanctuary.yaml</code>로 자동 생성</li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section class="sec" id="test">
+    <div class="secnum">13 · 테스트</div>
+    <h2>단계별 검증</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>단계</th><th>무엇을</th><th>통과 기준</th></tr></thead>
+      <tbody>
+        <tr><td>단위</td><td>줄 생성, 재배분, 문 뮤텍스, 청소율, 일정 계산</td><td>pytest, 경계 사례 (빈 구역, 3대 동시 문 요청)</td></tr>
+        <tr><td>브라우저 sim</td><td><code>sim.js</code>로 규칙 확인</td><td>청소율 ≥ 95%, 문 동시 점유 0회, 70분 이내</td></tr>
+        <tr><td>Gazebo sim</td><td>로봇 3대 + 가짜 카메라 + 실제 서버 코드</td><td>같은 기준 + 태그 추적 오차 &lt; 5 cm (95%)</td></tr>
+        <tr><td>HIL 1대</td><td>실제 로봇 1대, 2열 한 구역</td><td>Matter 명령 성공 99%, 의자 밑 통과, 정체 0회</td></tr>
+        <tr><td>현장 3대</td><td>4주 시범 운영</td><td>청소율 ≥ 90%, 사람 개입 주 1회 이하</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <footer class="foot"><a href="architecture.html">← 아키텍처</a><a href="hardware.html">하드웨어 →</a><a href="https://github.com/benchvue/cleaning">GitHub</a></footer>
+</main>
+
+<script src="assets/js/diagram.js"></script>
+<script>
+(function(){
+  "use strict";
+  const D=Diagram;
+  // 1 서비스
+  D.flow("dSvc",{
+    groups:[
+      {x:10,y:10,w:980,h:96,title:"site 프로필 (현장)",fill:"#fff",stroke:"#8b949c",dash:"5 3"},
+      {x:10,y:120,w:980,h:200,title:"공통 코어 (현장 미니 PC = 개발 PC, 같은 이미지)",fill:"#f6f7f3",stroke:"#1c2633"},
+      {x:10,y:334,w:980,h:126,title:"sim 프로필 (Windows 11 Docker)",fill:"#e9eee0",stroke:"#7f8f63"}
+    ],
+    nodes:[
+      {id:"ha",x:40,y:40,w:200,h:50,title:"homeassistant",sub:"Matter · dreame_vacuum",kind:"blue"},
+      {id:"go",x:280,y:40,w:180,h:50,title:"go2rtc",sub:"RTSP → WebRTC"},
+      {id:"cfd",x:500,y:40,w:180,h:50,title:"cloudflared",sub:"터널"},
+      {id:"rcam",x:720,y:40,w:240,h:50,title:"실제 카메라 RTSP × 4",kind:"ext"},
+      {id:"mq",x:40,y:150,w:140,h:50,title:"mosquitto",sub:":1883"},
+      {id:"fl",x:210,y:150,w:140,h:50,title:"fleet",kind:"dark"},
+      {id:"sc",x:380,y:150,w:140,h:50,title:"scheduler"},
+      {id:"tr",x:550,y:150,w:140,h:50,title:"tracker",sub:"AprilTag"},
+      {id:"fu",x:720,y:150,w:120,h:50,title:"fusion"},
+      {id:"cv",x:860,y:150,w:110,h:50,title:"coverage"},
+      {id:"api",x:210,y:240,w:310,h:56,title:"api",sub:":8000 REST · /ws",kind:"box"},
+      {id:"db",x:40,y:236,w:140,h:64,title:"db",sub:"postgres :5432",kind:"store"},
+      {id:"web",x:550,y:240,w:200,h:56,title:"web (정적)",sub:":8080 이 저장소 페이지",kind:"sage"},
+      {id:"sw",x:40,y:370,w:220,h:66,title:"sim-world",sub:"ROS 2 Jazzy · Gazebo\n본당 + 로봇 3대",kind:"sage"},
+      {id:"sb",x:300,y:370,w:200,h:66,title:"sim-bridge",sub:"SimAdapter\nMQTT ↔ ROS 2",kind:"sage"},
+      {id:"fc",x:540,y:370,w:200,h:66,title:"fake-cams",sub:"Gazebo 카메라 4대\n→ MediaMTX RTSP",kind:"sage"},
+      {id:"nv",x:780,y:370,w:180,h:66,title:"novnc",sub:":6080 Gazebo 화면",kind:"sage"}
+    ],
+    edges:[
+      {a:"ha",b:"mq",label:"상태",lx:26},{a:"fl",b:"mq",bend:0},{a:"sc",b:"fl"},{a:"rcam",b:"tr",dash:true},{a:"tr",b:"fu"},{a:"fu",b:"cv"},
+      {a:"fl",b:"api"},{a:"api",b:"db"},{a:"api",b:"web"},{a:"sw",b:"sb"},{a:"sb",b:"mq",label:"명령·상태",path:[[320,370],[320,330],[195,330],[195,175],[180,175]],labelAt:[258,330]},{a:"sw",b:"fc",bend:-30},{a:"fc",b:"tr",label:"RTSP",path:[[700,370],[700,322],[772,322],[772,218],[620,218],[620,200]],labelAt:[772,280]},{a:"sw",b:"nv",bend:-60}
+    ]
+  });
+  // 2 로봇 상태도
+  D.flow("dRobot",{
+    groups:[{x:466,y:22,w:450,h:410,title:"",fill:"none",stroke:"#c9cec4",dash:"4 4"}],
+    nodes:[
+      {id:"s0",x:20,y:54,w:22,h:22,kind:"start"},
+      {id:"DOCKED",x:60,y:40,w:150,h:50,title:"DOCKED",sub:"충전 중",kind:"state"},
+      {id:"QUEUED",x:270,y:40,w:150,h:50,title:"QUEUED",sub:"출발 지연",kind:"state"},
+      {id:"EXITING",x:480,y:40,w:150,h:50,title:"EXITING",sub:"문 통과",kind:"state"},
+      {id:"CLEANING",x:730,y:40,w:170,h:56,title:"CLEANING",sub:"자기 구역 줄",kind:"active"},
+      {id:"WAIT",x:480,y:200,w:150,h:50,title:"WAIT_DOOR",sub:"pause · FIFO",kind:"warn"},
+      {id:"HELPING",x:730,y:200,w:170,h:56,title:"HELPING",sub:"남의 앞줄",kind:"active"},
+      {id:"CHARGE",x:240,y:360,w:170,h:50,title:"CHARGE_RESUME",sub:"80%까지 충전",kind:"warn"},
+      {id:"EMPTYING",x:480,y:360,w:150,h:50,title:"EMPTYING",sub:"자동 비움",kind:"state"},
+      {id:"RETURNING",x:730,y:360,w:170,h:56,title:"RETURNING",sub:"복귀 · 문 통과",kind:"state"},
+      {id:"ERROR",x:480,y:500,w:170,h:54,title:"ERROR / STUCK",sub:"관리자 알림 · 줄 재배분",kind:"bad"},
+      {id:"STOP",x:740,y:500,w:160,h:54,title:"E-STOP",sub:"전체 정지",kind:"bad"}
+    ],
+    edges:[
+      {a:"s0",b:"DOCKED"},
+      {a:"DOCKED",b:"QUEUED",label:"dispatch"},
+      {a:"QUEUED",b:"EXITING",label:"지연 끝"},
+      {a:"EXITING",b:"CLEANING",label:"통로 도착"},
+      {a:"EXITING",b:"WAIT",label:"잠금 실패",ax:-35,bx:-35},
+      {a:"WAIT",b:"EXITING",label:"잠금 획득 →\n이전 상태",ax:35,bx:35},
+      {a:"CLEANING",b:"CLEANING",label:"다음 줄",dx:20},
+      {a:"CLEANING",b:"HELPING",label:"자기 줄 소진\n& 남은 줄 ≥ 3",ax:-40,bx:-40},
+      {a:"HELPING",b:"RETURNING",label:"가져올 줄 없음",ax:-40,bx:-40},
+      {a:"CLEANING",b:"RETURNING",label:"줄 없음 · 배터리 < 25%\n· 복귀 명령",path:[[900,68],[958,68],[958,388],[900,388]],labelAt:[930,240]},
+      {a:"RETURNING",b:"WAIT",label:"문 잠금 실패",path:[[730,378],[680,378],[680,232],[630,232]],labelAt:[680,300]},
+      {a:"RETURNING",b:"EMPTYING",label:"도크 도착",ay:10,by:10},
+      {a:"EMPTYING",b:"CHARGE",label:"남은 줄 있음"},
+      {a:"EMPTYING",b:"DOCKED",label:"비움 완료 (미션 끝)",path:[[555,410],[555,450],[135,450],[135,90]],labelAt:[330,450]},
+      {a:"CHARGE",b:"EXITING",label:"80% 도달",path:[[325,360],[325,160],[520,160],[520,90]],labelAt:[420,160]},
+      {a:"WAIT",b:"ERROR",label:"오류 · 90 s 정체\n(점선 안 모든 상태)",path:[[600,432],[600,500]],labelAt:[600,466],dash:true,color:"#b83a32"},
+      {a:"ERROR",b:"RETURNING",label:"관리자 해제",path:[[650,520],[700,520],[700,425],[760,425],[760,416]],labelAt:[700,470],dash:true,color:"#b83a32"},
+      {a:"STOP",b:"RETURNING",label:"해제 →\n이전 상태",path:[[800,500],[800,416]],labelAt:[800,458],dash:true,color:"#b83a32"},
+      {a:"RETURNING",b:"STOP",label:"긴급 정지",path:[[870,416],[870,500]],labelAt:[870,458],dash:true,color:"#b83a32"}
+    ]
+  });
+  // 3 미션 상태도
+  D.flow("dMission",{
+    nodes:[
+      {id:"s",x:16,y:62,w:22,h:22,kind:"start"},
+      {id:"IDLE",x:60,y:48,w:120,h:50,title:"IDLE",kind:"state"},
+      {id:"PRE",x:230,y:48,w:140,h:50,title:"PRECHECK",sub:"로봇·도크·문",kind:"state"},
+      {id:"DIS",x:420,y:48,w:140,h:50,title:"DISPATCHING",sub:"출발 순서",kind:"state"},
+      {id:"RUN",x:600,y:48,w:140,h:50,title:"RUNNING",sub:"진행률 · 재배분",kind:"active"},
+      {id:"RET",x:780,y:48,w:120,h:50,title:"RETURNING",kind:"state"},
+      {id:"BLK",x:230,y:200,w:140,h:50,title:"BLOCKED",sub:"알림 · 30분 재시도",kind:"warn"},
+      {id:"SKP",x:420,y:200,w:140,h:50,title:"SKIPPED",sub:"2시간 초과 · 제외일",kind:"bad"},
+      {id:"ABT",x:600,y:200,w:140,h:50,title:"ABORTED",sub:"긴급 정지 · 사람 감지",kind:"bad"},
+      {id:"REP",x:780,y:200,w:120,h:50,title:"REPORTING",sub:"DB · 공개 JSON",kind:"state"},
+      {id:"e",x:950,y:214,w:22,h:22,kind:"end"}
+    ],
+    edges:[
+      {a:"s",b:"IDLE"},{a:"IDLE",b:"PRE",label:"일정 / 수동"},{a:"PRE",b:"DIS",label:"통과"},
+      {a:"PRE",b:"BLK",label:"실패",ax:-35,bx:-35},{a:"BLK",b:"PRE",label:"재점검",ax:35,bx:35},
+      {a:"BLK",b:"SKP",label:"2시간"},
+      {a:"SKP",b:"IDLE",label:"다음 일정",path:[[490,250],[490,290],[120,290],[120,98]],labelAt:[300,290]},
+      {a:"DIS",b:"RUN"},{a:"RUN",b:"RET",label:"줄 소진"},
+      {a:"RUN",b:"ABT",label:"E-STOP",color:"#b83a32",dash:true},{a:"ABT",b:"REP",label:"복귀 후",dash:true,color:"#b83a32"},
+      {a:"RET",b:"REP",label:"3대 도크"},{a:"REP",b:"e"}
+    ]
+  });
+  // 4 문
+  D.flow("dDoor",{
+    nodes:[
+      {id:"F",x:30,y:100,w:130,h:60,title:"FREE",sub:"holder = ∅",kind:"active"},
+      {id:"H",x:300,y:100,w:150,h:60,title:"HELD(Rk)",sub:"queue = [..]",kind:"warn"},
+      {id:"W",x:300,y:220,w:150,h:50,title:"WATCHDOG",sub:"90 s 초과",kind:"bad"}
+    ],
+    edges:[
+      {a:"F",b:"H",label:"request(Rk), 큐 맨 앞",bend:-45},
+      {a:"H",b:"F",label:"release, 큐 비었음",bend:-25},
+      {a:"H",b:"H",label:"release → 큐 다음 로봇"},
+      {a:"H",b:"W",label:"점유 시간 초과"},
+      {a:"W",b:"F",label:"강제 해제 + 경고",path:[[300,245],[95,245],[95,160]],labelAt:[190,245]}
+    ]
+  });
+  // 5 시퀀스
+  D.seq("dSeq1",{actors:["Scheduler","Fleet",{name:"Home Assistant",kind:"blue"},{name:"로봇 R3",kind:"blue"},"Tracker","API / Pages"],gap:160,msgs:[
+    {from:"Scheduler",to:"Fleet",label:"토 09:00 mission.start"},
+    {from:"Fleet",to:"Home Assistant",label:"상태 조회 (3대)"},
+    {from:"Home Assistant",to:"Fleet",label:"배터리 100%, 오류 없음",dash:true},
+    {from:"Fleet",to:"Fleet",label:"PRECHECK 통과 · 줄 생성"},
+    {from:"Fleet",to:"Home Assistant",label:"R3 start(segment=front-right)"},
+    {from:"Home Assistant",to:"로봇 R3",label:"Matter RVC RunMode=Cleaning"},
+    {from:"Tracker",to:"Fleet",label:"pose R3 (문 앞 0.8 m)",dash:true},
+    {from:"Fleet",to:"Fleet",label:"door.request(R3) → 획득"},
+    {note:"R2, R1 같은 방식으로 30 s 간격 출발",from:"Fleet",to:"로봇 R3"},
+    {from:"Tracker",to:"Fleet",label:"pose 20 Hz → 진행률",dash:true},
+    {from:"Fleet",to:"API / Pages",label:"status (30 s)"},
+    {from:"Fleet",to:"Home Assistant",label:"return_to_base (줄 소진)"},
+    {from:"Home Assistant",to:"Fleet",label:"docked · emptying 완료",dash:true},
+    {from:"Fleet",to:"API / Pages",label:"mission.report → DB · status.json"}
+  ]});
+  D.seq("dSeq2",{actors:[{name:"로봇 R1",kind:"blue"},"Fleet",{name:"로봇 R2",kind:"blue"},"DoorMutex",{name:"로봇 R3",kind:"blue"}],gap:180,msgs:[
+    {from:"로봇 R3",to:"DoorMutex",label:"request → 획득"},
+    {from:"로봇 R2",to:"DoorMutex",label:"request → 실패 (큐 1번)"},
+    {from:"Fleet",to:"로봇 R2",label:"pause"},
+    {from:"로봇 R3",to:"DoorMutex",label:"release (통로 0.6 m 지남)"},
+    {from:"DoorMutex",to:"Fleet",label:"holder = R2"},
+    {from:"Fleet",to:"로봇 R2",label:"resume"},
+    {note:"… 47분 뒤",from:"로봇 R1",to:"로봇 R3"},
+    {from:"로봇 R1",to:"Fleet",label:"자기 줄 소진"},
+    {from:"Fleet",to:"Fleet",label:"victim = R2 (남은 줄 9)"},
+    {from:"Fleet",to:"로봇 R1",label:"start(segment = R2 앞 3줄)"},
+    {from:"Fleet",to:"로봇 R2",label:"구역 축소 (앞 3줄 제외)"}
+  ]});
+  // 6 DFD
+  D.flow("dDfd",{
+    nodes:[
+      {id:"cam",x:20,y:30,w:150,h:50,title:"천장 카메라 × 4",kind:"ext"},
+      {id:"det",x:220,y:30,w:170,h:50,title:"1. 태그 검출",sub:"undistort · AprilTag",kind:"state"},
+      {id:"proj",x:440,y:30,w:170,h:50,title:"2. F 좌표 투영",sub:"H_i · − t_tag",kind:"state"},
+      {id:"ha",x:20,y:150,w:150,h:50,title:"Home Assistant",kind:"blue"},
+      {id:"norm",x:220,y:150,w:170,h:50,title:"3. 상태 정규화",sub:"RobotState",kind:"state"},
+      {id:"fus",x:440,y:150,w:170,h:50,title:"4. 위치 융합",sub:"칼만 20 Hz",kind:"state"},
+      {id:"fleet",x:660,y:90,w:150,h:50,title:"5. Fleet 판단",sub:"줄 · 문 · 재배분",kind:"active"},
+      {id:"cov",x:660,y:210,w:150,h:50,title:"6. 청소 칠하기",sub:"10 cm 격자",kind:"state"},
+      {id:"rep",x:440,y:300,w:170,h:50,title:"7. 집계",sub:"청소율 · 운영 시간",kind:"state"},
+      {id:"db",x:250,y:290,w:130,h:70,title:"D1 DB",kind:"store"},
+      {id:"pub",x:660,y:330,w:150,h:50,title:"8. 공개 JSON",kind:"state"},
+      {id:"web",x:860,y:330,w:120,h:50,title:"성도 페이지",kind:"sage"},
+      {id:"adm",x:860,y:90,w:120,h:50,title:"관리 페이지",kind:"sage"},
+      {id:"rob",x:860,y:210,w:120,h:50,title:"로봇 × 3",kind:"blue"}
+    ],
+    edges:[
+      {a:"cam",b:"det",label:"프레임"},{a:"det",b:"proj",label:"코너 px"},{a:"proj",b:"fus",label:"z_cam"},
+      {a:"ha",b:"norm",label:"엔터티"},{a:"norm",b:"fus",label:"z_rob"},{a:"norm",b:"fleet",label:"state",path:[[305,150],[305,115],[660,115]],labelAt:[480,115]},
+      {a:"fus",b:"fleet",label:"pose"},{a:"fus",b:"cov",label:"pose"},{a:"fleet",b:"rob",label:"명령 (HA 경유)",bend:20},
+      {a:"fleet",b:"adm",label:"WS"},{a:"cov",b:"rep"},{a:"rep",b:"db"},{a:"rep",b:"pub"},{a:"pub",b:"web",label:"status.json"}
+    ]
+  });
+  // 8 칼만
+  D.flow("dKf",{
+    nodes:[
+      {id:"pred",x:20,y:30,w:180,h:56,title:"예측",sub:"x = F x, P = F P Fᵀ + Q",kind:"state"},
+      {id:"cam",x:280,y:20,w:180,h:50,title:"카메라 측정",sub:"σ 1.2–2.0 cm, 5 Hz",kind:"box"},
+      {id:"rob",x:280,y:100,w:180,h:50,title:"로봇 자체 위치",sub:"σ 8 cm, 0.2–0.5 Hz",kind:"blue"},
+      {id:"upd",x:20,y:150,w:180,h:56,title:"갱신",sub:"K = P Hᵀ (H P Hᵀ + R)⁻¹",kind:"active"},
+      {id:"con",x:20,y:250,w:180,h:56,title:"의자 제약",sub:"다리 통로로 투영",kind:"warn"},
+      {id:"out",x:280,y:250,w:180,h:56,title:"pose 출력",sub:"x, y, θ, σ, visible",kind:"dark"}
+    ],
+    edges:[{a:"pred",b:"upd"},{a:"cam",b:"upd",label:"z_cam"},{a:"rob",b:"upd",label:"z_rob"},{a:"upd",b:"con"},{a:"con",b:"out"},{a:"upd",b:"pred",label:"다음 주기",bend:-60,lx:-40}]
+  });
+  // 9 DB
+  const T=(id,x,y,title,fields,kind)=>({id,x,y,w:205,h:24+fields.length*15,title,sub:fields.join("\n"),kind:kind||"box",align:"left",mono:true});
+  D.flow("dDb",{
+    nodes:[
+      T("mission",20,20,"missions",["id PK","started_at, ended_at","state, scope","coverage, area_m2","runtime_min"],"active"),
+      T("run",270,20,"robot_runs",["id PK","mission_id FK","robot_id FK","clean_m, helped_passes","battery_start/end"]),
+      T("robot",520,20,"robots",["id PK (R1..R3)","tag_id, zone","model, serial","installed_at"],"blue"),
+      T("cov",20,190,"coverage_maps",["mission_id PK FK","grid bytea (200×180)","confirmed bytea"]),
+      T("pose",270,190,"pose_samples",["robot_id, t (PK)","x, y, th, sigma","src, under_chair","1 Hz 다운샘플, 90일"]),
+      T("ev",520,190,"events",["id PK, t","kind, robot_id","text, payload jsonb"]),
+      T("sch",775,20,"schedules",["id PK","kind weekly|oneoff","day/date, time","scope, enabled"],"sage"),
+      T("cons",775,190,"consumables",["robot_id, part (PK)","hours_used, limit","replaced_at"],"oak")
+    ],
+    edges:[{a:"run",b:"mission"},{a:"run",b:"robot"},{a:"cov",b:"mission"},{a:"pose",b:"robot",bend:20},{a:"ev",b:"robot"},{a:"cons",b:"robot",bend:-20}]
+  });
+  // 12 개발 환경
+  D.flow("dDev",{
+    groups:[{x:10,y:10,w:980,h:340,title:"Windows 11 PC (RAM 32 GB 권장)",fill:"#fff",stroke:"#1c2633"},{x:30,y:44,w:690,h:290,title:"Docker Desktop · WSL2 · docker compose --profile sim up",fill:"#eef4fb",stroke:"#2f6db0"}],
+    nodes:[
+      {id:"sw",x:50,y:80,w:200,h:60,title:"sim-world",sub:"Gazebo 본당 · 로봇 3대",kind:"sage"},
+      {id:"sb",x:280,y:80,w:180,h:60,title:"sim-bridge",sub:"SimAdapter",kind:"sage"},
+      {id:"fc",x:490,y:80,w:200,h:60,title:"fake-cams",sub:"가상 천장 카메라 4대",kind:"sage"},
+      {id:"core",x:50,y:180,w:640,h:60,title:"공통 코어: fleet · scheduler · tracker · fusion · coverage · api · mosquitto · db",kind:"dark"},
+      {id:"cfg",x:50,y:262,w:300,h:56,title:"sanctuary.yaml",sub:"도면 · 구역 · 카메라 (공유)",kind:"oak"},
+      {id:"web",x:390,y:262,w:300,h:56,title:"web",sub:"이 저장소 페이지 · API 모드",kind:"sage"},
+      {id:"b1",x:760,y:70,w:210,h:50,title:"localhost:6080",sub:"Gazebo 3D (noVNC)"},
+      {id:"b2",x:760,y:140,w:210,h:50,title:"localhost:8080",sub:"성도 · 관리 페이지"},
+      {id:"b3",x:760,y:210,w:210,h:50,title:"localhost:8000/docs",sub:"API (Swagger)"},
+      {id:"b4",x:760,y:280,w:210,h:50,title:"VS Code",sub:"Dev Containers"}
+    ],
+    edges:[{a:"sw",b:"sb"},{a:"sw",b:"fc",bend:-40},{a:"sb",b:"core",label:"MQTT"},{a:"fc",b:"core",label:"RTSP"},{a:"cfg",b:"core"},{a:"core",b:"web"},{a:"sw",b:"b1",bend:-60,dash:true},{a:"web",b:"b2",dash:true},{a:"core",b:"b3",dash:true}]
+  });
+})();
+</script>
+</body>
+</html>

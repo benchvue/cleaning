@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>청소 로봇 관리</title>
+<meta name="description" content="관리자용 청소 로봇 모니터링, 일정 관리, 소모품, 기록">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@600;700&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+<style>
+  .wrap{max-width:1240px}
+  .health{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+  .hl{border:1px solid var(--line);border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;gap:2px;background:#fff}
+  .hl small{color:var(--muted);font-size:12px}
+  .hl b{display:flex;align-items:center;gap:6px;font-size:14.5px}
+  .hl .t{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+  .main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}
+  @media (max-width:900px){.main{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);border-radius:12px;background:#fff;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+  .panel h2{font-size:19px;margin:0}
+  .panel .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .panel .head .right{margin-left:auto}
+  .mapbox{background:var(--paper);border-radius:8px;padding:8px}
+  .mapbox canvas{display:block;border-radius:4px}
+  .mission{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  @media (max-width:520px){.mission{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .ms{background:var(--paper);border-radius:8px;padding:8px 10px}
+  .ms small{display:block;font-size:11.5px;color:var(--muted)}
+  .ms b{font-family:var(--f-mono);font-size:17px;font-weight:500}
+  .rcard{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:4px 10px}
+  .rcard .nm{font-weight:700;display:flex;align-items:center;gap:8px}
+  .rcard .kv{font-size:12.5px;color:var(--muted);grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:4px 14px}
+  .rcard .kv b{color:var(--ink);font-weight:600;font-family:var(--f-mono)}
+  .bars{grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .bars div{font-size:11px;color:var(--muted)}
+  .bars .meter{height:5px;margin-top:2px}
+  .log{list-style:none;margin:0;padding:0;font-size:13px;display:flex;flex-direction:column;gap:3px;max-height:260px;overflow:auto}
+  .log li{border-bottom:1px dashed var(--line);padding-bottom:3px;display:flex;gap:8px}
+  .log .mono{color:var(--oak)}
+  .log li.error{color:var(--bad)}
+  .sch{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:14px}
+  @media (max-width:900px){.sch{grid-template-columns:1fr}}
+  .form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  .form label.f{min-width:100px}
+  .up{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+  .up li{display:flex;gap:10px;align-items:center;font-size:14px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .up .d{font-family:var(--f-mono);min-width:118px}
+  .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+  .toast.on{opacity:1}
+  .confirm{display:flex;gap:8px;align-items:center;background:var(--bad-soft);border:1px solid #efc9c5;border-radius:8px;padding:8px 10px;font-size:13.5px;flex-wrap:wrap}
+  .hist svg{width:100%;height:auto;display:block}
+  table.small td,table.small th{padding:6px 9px;font-size:13px}
+</style>
+</head>
+<body>
+<header class="topnav"><div class="in">
+  <a class="brand" href="index.html"><svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#7f8f63"/><circle cx="13" cy="13" r="4" fill="#fff"/><path d="M13 2v4" stroke="#fff" stroke-width="2"/></svg>본당 청소 로봇</a>
+  <nav aria-label="페이지">
+    <a href="index.html">성도 페이지</a><a href="overview.html">도입 안내</a><a href="architecture.html">아키텍처</a><a href="software.html">소프트웨어</a><a href="hardware.html">하드웨어</a><a href="maintain.html" aria-current="page">관리</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <div class="head" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px">
+    <div>
+      <span class="audience">관리자 · 개발자</span>
+      <h1 style="margin-bottom:4px">청소 로봇 관리</h1>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="small muted">데이터</span>
+      <div class="seg" role="group" aria-label="데이터 출처"><button type="button" aria-pressed="true" id="srcSim">시뮬레이션</button><button type="button" id="srcApi" disabled title="엣지 서버 연결 후 사용">엣지 API</button></div>
+    </div>
+  </div>
+  <div class="simbanner" style="margin:8px 0 14px"><span aria-hidden="true">ⓘ</span><span>지금은 <b>가상 시뮬레이션</b>과 예시 기록으로 동작합니다. 아직 로그인이 없으므로 실제 로봇을 연결하기 전에 Cloudflare Access 인증을 꼭 붙여야 합니다. 일정·소모품 변경은 이 브라우저에만 저장됩니다.</span></div>
+
+  <div class="health" id="health"></div>
+
+  <div class="main" style="margin-top:16px">
+    <div class="panel">
+      <div class="head"><h2>실시간 지도</h2><span class="chip c-info" id="mPhase">대기</span><span class="right mono small" id="mClock">토 09:00</span></div>
+      <div class="mapbox"><canvas id="map" aria-label="로봇 위치와 청소 진행 지도"></canvas></div>
+      <div class="btnrow">
+        <button class="btn pri" id="bStart" type="button">지금 청소 시작</button>
+        <button class="btn" id="bPause" type="button">일시정지</button>
+        <button class="btn" id="bReturn" type="button">모두 복귀</button>
+        <button class="btn danger" id="bStop" type="button">긴급 정지</button>
+        <div class="seg" role="group" aria-label="시뮬레이션 속도" style="margin-left:auto"><button type="button" data-r="30">0.5×</button><button type="button" data-r="60" aria-pressed="true">1×</button><button type="button" data-r="180">3×</button><button type="button" data-r="600">10×</button></div>
+      </div>
+      <div id="confirmBox" hidden class="confirm"><span id="confirmText">정말 실행할까요?</span><button class="btn danger" id="cYes" type="button">실행</button><button class="btn" id="cNo" type="button">취소</button></div>
+      <div class="mission">
+        <div class="ms"><small>진행률</small><b id="kCov">0%</b></div>
+        <div class="ms"><small>경과</small><b id="kEl">0분</b></div>
+        <div class="ms"><small>예상 종료</small><b id="kEta">—</b></div>
+        <div class="ms"><small>문</small><b id="kDoor">비어 있음</b></div>
+      </div>
+      <div class="legend"><span><i style="background:#4aa062;opacity:.6"></i>청소 완료</span><span><i style="background:#1c2633"></i>천장 카메라</span><span><i style="background:#b83a32"></i>문 사용 중</span><span>반투명 로봇 = 의자 밑 (태그 가려짐)</span></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <div class="panel">
+        <div class="head"><h2>로봇</h2></div>
+        <div id="robots" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <div class="panel">
+        <div class="head"><h2>이벤트</h2><button class="btn right" id="bClear" type="button">지우기</button></div>
+        <ol class="log" id="log"></ol>
+      </div>
+    </div>
+  </div>
+
+  <section class="sec" id="schedule" style="margin-top:28px">
+    <div class="head" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2 style="margin:0">일정</h2>
+      <div class="btnrow" style="margin-left:auto">
+        <button class="btn" id="bExport" type="button">JSON 내보내기</button>
+        <label class="btn" for="fImport" style="cursor:pointer">JSON 가져오기<input id="fImport" type="file" accept="application/json" hidden></label>
+        <button class="btn" id="bResetSch" type="button">기본값으로</button>
+      </div>
+    </div>
+    <div class="sch">
+      <div class="panel">
+        <h3>매주 반복</h3>
+        <div class="tbl"><table class="small"><thead><tr><th>요일</th><th>시간</th><th>범위</th><th>사용</th><th></th></tr></thead><tbody id="tWeekly"></tbody></table></div>
+        <form class="form" id="fWeekly">
+          <label class="f">요일<select id="wDay"><option value="0">일</option><option value="1">월</option><option value="2">화</option><option value="3">수</option><option value="4">목</option><option value="5">금</option><option value="6" selected>토</option></select></label>
+          <label class="f">시간<input type="time" id="wTime" value="09:00" required></label>
+          <label class="f">범위<select id="wScope"><option value="all">전체</option><option value="front">앞쪽만</option><option value="1열">1열</option><option value="2·3열">2·3열</option><option value="4·5열">4·5열</option></select></label>
+          <button class="btn pri" type="submit">추가</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h3>한 번만 · 건너뛰기</h3>
+        <div class="tbl"><table class="small"><thead><tr><th>날짜</th><th>내용</th><th></th></tr></thead><tbody id="tOne"></tbody></table></div>
+        <form class="form" id="fOne">
+          <label class="f">날짜<input type="date" id="oDate" required></label>
+          <label class="f">종류<select id="oKind"><option value="oneoff">추가 청소</option><option value="blackout">건너뛰기</option></select></label>
+          <label class="f">시간<input type="time" id="oTime" value="14:00"></label>
+          <label class="f" style="flex:1;min-width:140px">메모<input id="oNote" placeholder="예: 성탄 전 / 행사"></label>
+          <button class="btn pri" type="submit">추가</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h3>다가오는 청소</h3>
+        <ul class="up" id="upcoming"></ul>
+        <p class="tiny muted" style="margin:0">시간대: America/New_York. 엣지 서버가 연결되면 이 일정이 서버의 <code>schedule.json</code>으로 저장됩니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="consum">
+    <h2>소모품</h2>
+    <div class="tbl"><table class="small"><thead><tr><th>로봇</th><th>필터 (150 h)</th><th>메인 브러시 (300 h)</th><th>사이드 브러시 (200 h)</th><th>먼지봉투 (10주)</th><th>태그</th></tr></thead><tbody id="tCons"></tbody></table></div>
+    <p class="small muted">"교체" 버튼을 누르면 사용 시간이 0으로 돌아가고 이벤트에 기록됩니다. 80% 이상이면 주황, 100% 이상이면 빨강입니다.</p>
+  </section>
+
+  <section class="sec" id="history">
+    <h2>기록</h2>
+    <div class="grid2">
+      <div class="card hist"><h3 style="font-size:14px">청소율 · 걸린 시간 (최근 12회)</h3><svg id="hChart" viewBox="0 0 560 240" role="img" aria-label="청소율과 운영 시간 그래프"></svg></div>
+      <div class="tbl"><table class="small"><thead><tr><th>날짜</th><th class="r">청소율</th><th class="r">시간</th><th class="r">면적</th><th>메모</th></tr></thead><tbody id="tHist"></tbody></table></div>
+    </div>
+  </section>
+
+  <footer class="foot"><a href="index.html">성도 페이지</a><a href="software.html#api">API 설계</a><a href="https://github.com/benchvue/cleaning">GitHub</a></footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/layout.js"></script>
+<script src="assets/js/sim.js"></script>
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id);
+  const store={get(k,d){try{const v=localStorage.getItem("cleaning."+k);return v?JSON.parse(v):d;}catch(e){return d;}},set(k,v){try{localStorage.setItem("cleaning."+k,JSON.stringify(v));}catch(e){}}};
+  function toast(t){const e=$("toast");e.textContent=t;e.classList.add("on");clearTimeout(toast._t);toast._t=setTimeout(()=>e.classList.remove("on"),2200);}
+  const DOW=["일","월","화","수","목","금","토"];
+  const now=()=>{const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");};
+
+  // ===== 이벤트 로그 =====
+  const logEl=$("log");
+  function addLog(clock,text,kind){const li=document.createElement("li");if(kind==="error")li.className="error";li.innerHTML='<span class="mono">'+clock+"</span><span></span>";li.lastChild.textContent=text;logEl.prepend(li);while(logEl.children.length>120)logEl.lastChild.remove();}
+  $("bClear").addEventListener("click",()=>{logEl.innerHTML="";});
+
+  // ===== 시뮬레이션 =====
+  const sim=new CleaningSim({onEvent:e=>addLog(e.clock,e.text,e.kind)});
+  const view=new SimView($("map"),sim,{zones:true,cams:true});
+  const player=new SimPlayer(sim,view,{rate:60,autoplay:false,autostart:false,onTick:tick});
+  const ST=SimUtil.STATE_KO;
+  const robotsEl=$("robots");
+  robotsEl.innerHTML=sim.robots.map(r=>`<div class="rcard" style="--c:${r.color}">
+    <span class="nm"><span class="dot" style="background:${r.color}"></span>${r.id} · ${r.def.zoneName}</span><span id="rs${r.id}" class="chip c-mute">충전 중</span>
+    <div class="kv"><span>배터리 <b id="rb${r.id}">100%</b></span><span>위치 <b id="rp${r.id}">도크</b></span><span>추정 오차 <b id="re${r.id}">—</b></span><span>청소 거리 <b id="rd${r.id}">0 m</b></span><span>남은 줄 <b id="rq${r.id}">${r.queue.length}</b></span></div>
+  </div>`).join("");
+  let missionLogged=false;
+  function tick(){
+    const ph=sim.phase, c=sim.coverage();
+    $("mClock").textContent="토 "+sim.clock();
+    $("mPhase").textContent=sim.stopped?"긴급 정지":ph==="ready"?"대기":ph==="running"?(player.playing?"청소 중":"일시정지"):"완료";
+    $("mPhase").className="chip "+(sim.stopped?"c-bad":ph==="running"?(player.playing?"c-good":"c-warn"):ph==="done"?"c-info":"c-mute");
+    $("kCov").textContent=Math.round(c*100)+"%";
+    $("kEl").textContent=Math.round(sim.t/60)+"분";
+    const left=sim.robots.reduce((a,r)=>a+r.queue.length,0);
+    if(ph==="running"){const per=sim.t/Math.max(1,sim.totalPasses-left);const eta=sim.startSec+sim.t+left*per/3*1.05+300;$("kEta").textContent=SimUtil.fmtClock(eta);}
+    else if(ph==="done") $("kEta").textContent=sim.summary.end; else $("kEta").textContent="—";
+    $("kDoor").textContent=sim.door?sim.door+" 통과 중":"비어 있음";
+    sim.robots.forEach(r=>{
+      const chip=$("rs"+r.id);chip.textContent=ST[r.state]||r.state;
+      chip.className="chip "+({cleaning:"c-good",helping:"c-good",waiting:"c-warn",returning:"c-info",emptying:"c-info",exiting:"c-info"}[r.state]||"c-mute");
+      $("rb"+r.id).textContent=Math.round(r.battery)+"%";
+      const atDock=["docked","done","queued","emptying"].includes(r.state);
+      $("rp"+r.id).textContent=atDock?"도크":"("+r.x.toFixed(1)+", "+r.y.toFixed(1)+") m";
+      $("re"+r.id).textContent=atDock?"—":r.under?"±10–30 cm 추정":"±3–5 cm 카메라";
+      $("rd"+r.id).textContent=Math.round(r.cleanM)+" m";
+      $("rq"+r.id).textContent=r.queue.length;
+    });
+    if(ph==="done"&&!missionLogged){missionLogged=true;
+      const runs=store.get("simRuns",[]);runs.push({date:new Date().toISOString().slice(0,10),coverage:+sim.summary.coverage.toFixed(3),runtime_min:sim.summary.runtimeMin,area_m2:sim.summary.areaM2,notes:"시뮬레이션 실행"});store.set("simRuns",runs.slice(-6));
+      addConsumableHours(sim.summary.runtimeMin/60);renderHist();toast("시뮬레이션 기록을 저장했습니다");}
+    $("bStart").disabled=ph==="running";
+    $("bReturn").disabled=ph!=="running"; $("bPause").disabled=ph!=="running";
+    $("bStop").textContent=sim.stopped?"정지 해제":"긴급 정지";
+  }
+  $("bStart").addEventListener("click",()=>{if(sim.phase==="done"){sim.reset();view.resetCoverage();missionLogged=false;}addLog(now(),"관리자: 지금 청소 시작","admin");sim.start();player.playing=true;$("bPause").textContent="일시정지";});
+  $("bPause").addEventListener("click",()=>{player.playing=!player.playing;$("bPause").textContent=player.playing?"일시정지":"재개";addLog(sim.clock(),player.playing?"관리자: 재개 (resume)":"관리자: 일시정지 (pause)","admin");});
+  // 확인 단계 (window.confirm 대신 페이지 안에서)
+  let pending=null;
+  function ask(text,fn){$("confirmText").textContent=text;$("confirmBox").hidden=false;pending=fn;}
+  $("cYes").addEventListener("click",()=>{$("confirmBox").hidden=true;if(pending)pending();pending=null;});
+  $("cNo").addEventListener("click",()=>{$("confirmBox").hidden=true;pending=null;});
+  $("bReturn").addEventListener("click",()=>ask("남은 청소를 멈추고 3대 모두 도크로 보낼까요?",()=>{sim.returnAll();toast("모두 복귀 명령을 보냈습니다");}));
+  $("bStop").addEventListener("click",()=>{if(sim.stopped){sim.estop(false);toast("정지를 해제했습니다");return;}ask("모든 로봇을 그 자리에 즉시 멈출까요?",()=>{sim.estop(true);toast("긴급 정지했습니다");});});
+  document.querySelectorAll(".panel .seg button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".panel .seg button").forEach(x=>x.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");player.rate=+b.dataset.r;}));
+
+  // ===== 시스템 상태 (시뮬레이션) =====
+  function renderHealth(){
+    const t=now();
+    const items=[["엣지 서버","정상","good","CPU 18% · 디스크 31%"],["Home Assistant","정상","good","Matter 3/3"],["천장 카메라","4 / 4","good","5 fps · NTP 동기"],["로봇 연결","3 / 3","good","Wi-Fi −58 dBm"],["인터넷","정상","good","Dreame · Cloudflare"],["UPS","전원 정상","good","배터리 100%"],["다음 청소",nextRunText(),"info","자동"]];
+    $("health").innerHTML=items.map(([k,v,c,sub])=>`<div class="hl"><small>${k}</small><b><span class="dot" style="background:${c==="good"?"var(--good)":c==="warn"?"var(--warn)":"var(--r1)"}"></span>${v}</b><span class="t">${sub} · ${t}</span></div>`).join("");
+  }
+
+  // ===== 일정 =====
+  const DEFAULT_SCH={weekly:[{id:"w1",day:6,time:"09:00",scope:"all",enabled:true}],oneoff:[{id:"o1",date:"2026-12-23",time:"14:00",scope:"front",label:"성탄 전 앞쪽 추가 청소"}],blackout:[{date:"2026-11-28",reason:"추수감사 연합 행사"}]};
+  let sch=store.get("schedule",null);
+  function saveSch(){store.set("schedule",sch);renderSch();renderHealth();}
+  const scopeKo=s=>({all:"전체",front:"앞쪽만"}[s]||s);
+  function renderSch(){
+    $("tWeekly").innerHTML=sch.weekly.map((w,i)=>`<tr><td>${DOW[w.day]}</td><td class="mono">${w.time}</td><td>${scopeKo(w.scope)}</td><td><input type="checkbox" id="we${i}" ${w.enabled?"checked":""} aria-label="사용"></td><td><button class="btn" data-del-w="${i}" type="button">삭제</button></td></tr>`).join("")||'<tr><td colspan="5" class="muted">반복 일정이 없습니다. 아래에서 추가하세요.</td></tr>';
+    const rows=sch.oneoff.map((o,i)=>({d:o.date,h:`<td class="mono">${o.date} ${o.time}</td><td><span class="chip c-good">추가</span> ${o.label||scopeKo(o.scope)}</td><td><button class="btn" data-del-o="${i}" type="button">삭제</button></td>`}))
+      .concat(sch.blackout.map((b,i)=>({d:b.date,h:`<td class="mono">${b.date}</td><td><span class="chip c-bad">건너뛰기</span> ${b.reason||""}</td><td><button class="btn" data-del-b="${i}" type="button">삭제</button></td>`}))).sort((a,b)=>a.d<b.d?-1:1);
+    $("tOne").innerHTML=rows.map(r=>"<tr>"+r.h+"</tr>").join("")||'<tr><td colspan="3" class="muted">없음</td></tr>';
+    sch.weekly.forEach((w,i)=>$("we"+i).addEventListener("change",e=>{w.enabled=e.target.checked;saveSch();}));
+    document.querySelectorAll("[data-del-w]").forEach(b=>b.addEventListener("click",()=>{sch.weekly.splice(+b.dataset.delW,1);saveSch();toast("반복 일정을 삭제했습니다");}));
+    document.querySelectorAll("[data-del-o]").forEach(b=>b.addEventListener("click",()=>{sch.oneoff.splice(+b.dataset.delO,1);saveSch();}));
+    document.querySelectorAll("[data-del-b]").forEach(b=>b.addEventListener("click",()=>{sch.blackout.splice(+b.dataset.delB,1);saveSch();}));
+    const up=upcoming(8);
+    $("upcoming").innerHTML=up.map(u=>`<li><span class="d">${u.label}</span>${u.skip?'<span class="chip c-bad">건너뜀</span><span class="small muted">'+u.skip+'</span>':'<span class="chip '+(u.one?"c-good":"c-mute")+'">'+(u.one?"추가":"정기")+"</span><span class=\"small\">"+scopeKo(u.scope)+"</span>"}</li>`).join("")||'<li class="muted">예정된 청소가 없습니다.</li>';
+  }
+  function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+  function upcoming(n){
+    const out=[],today=new Date();today.setHours(0,0,0,0);
+    for(let k=0;k<70&&out.length<n;k++){
+      const d=new Date(today);d.setDate(d.getDate()+k);const ds=iso(d);
+      const bl=sch.blackout.find(b=>b.date===ds);
+      sch.weekly.filter(w=>w.enabled&&w.day===d.getDay()).forEach(w=>out.push({date:ds,time:w.time,scope:w.scope,skip:bl?bl.reason||"제외일":null,label:(d.getMonth()+1)+"/"+d.getDate()+" ("+DOW[d.getDay()]+") "+w.time}));
+      sch.oneoff.filter(o=>o.date===ds).forEach(o=>out.push({date:ds,time:o.time,scope:o.scope,one:true,skip:null,label:(d.getMonth()+1)+"/"+d.getDate()+" ("+DOW[d.getDay()]+") "+o.time}));
+    }
+    return out.slice(0,n);
+  }
+  function nextRunText(){if(!sch)return "—";const u=upcoming(5).find(x=>!x.skip);return u?u.label:"없음";}
+  $("fWeekly").addEventListener("submit",e=>{e.preventDefault();sch.weekly.push({id:"w"+Date.now(),day:+$("wDay").value,time:$("wTime").value,scope:$("wScope").value,enabled:true});saveSch();toast("반복 일정을 추가했습니다");});
+  $("fOne").addEventListener("submit",e=>{e.preventDefault();const d=$("oDate").value;if(!d)return;
+    if($("oKind").value==="blackout") sch.blackout.push({date:d,reason:$("oNote").value||"행사"});
+    else sch.oneoff.push({id:"o"+Date.now(),date:d,time:$("oTime").value||"09:00",scope:"all",label:$("oNote").value||"추가 청소"});
+    $("oNote").value="";saveSch();toast("추가했습니다");});
+  $("bExport").addEventListener("click",()=>{
+    const blob=new Blob([JSON.stringify(Object.assign({timezone:"America/New_York"},sch),null,1)],{type:"application/json"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="schedule.json";document.body.appendChild(a);a.click();a.remove();toast("schedule.json을 내려받았습니다");});
+  $("fImport").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const j=JSON.parse(t);if(!Array.isArray(j.weekly))throw new Error();sch={weekly:j.weekly,oneoff:j.oneoff||[],blackout:j.blackout||[]};saveSch();toast("일정을 불러왔습니다");}).catch(()=>toast("schedule.json 형식이 아닙니다: weekly 배열이 필요합니다"));e.target.value="";});
+  $("bResetSch").addEventListener("click",()=>{sch=JSON.parse(JSON.stringify(DEFAULT_SCH));saveSch();toast("기본 일정으로 되돌렸습니다");});
+
+  // ===== 소모품 =====
+  const LIMITS={filter:150,main:300,side:200,bag:10};
+  let cons=store.get("consumables",{R1:{filter:41,main:96,side:120,bag:6,tag:"양호"},R2:{filter:118,main:250,side:170,bag:8,tag:"양호"},R3:{filter:62,main:140,side:205,bag:4,tag:"들뜸 확인"}});
+  function addConsumableHours(h){Object.values(cons).forEach(c=>{c.filter+=h;c.main+=h;c.side+=h;c.bag+=1;});store.set("consumables",cons);renderCons();}
+  function renderCons(){
+    const cell=(rid,part,v,lim,unit)=>{const p=v/lim,c=p>=1?"var(--bad)":p>=.8?"var(--warn)":"var(--good)";
+      return `<td><div style="display:flex;align-items:center;gap:8px"><div class="meter" style="flex:1;min-width:60px;height:7px"><i style="width:${Math.min(100,p*100)}%;background:${c}"></i></div><span class="mono tiny">${Math.round(v)}${unit}</span><button class="btn" style="padding:2px 8px;font-size:12px" data-rid="${rid}" data-part="${part}" type="button">교체</button></div></td>`;};
+    $("tCons").innerHTML=Object.entries(cons).map(([rid,c])=>`<tr><td><b>${rid}</b></td>${cell(rid,"filter",c.filter,LIMITS.filter," h")}${cell(rid,"main",c.main,LIMITS.main," h")}${cell(rid,"side",c.side,LIMITS.side," h")}${cell(rid,"bag",c.bag,LIMITS.bag,"주")}<td>${c.tag==="양호"?'<span class="chip c-good">양호</span>':'<span class="chip c-warn">'+c.tag+"</span>"}</td></tr>`).join("");
+    document.querySelectorAll("[data-part]").forEach(b=>b.addEventListener("click",()=>{cons[b.dataset.rid][b.dataset.part]=0;store.set("consumables",cons);renderCons();
+      const nm={filter:"필터",main:"메인 브러시",side:"사이드 브러시",bag:"먼지봉투"}[b.dataset.part];addLog(now(),b.dataset.rid+" "+nm+" 교체 기록","admin");toast(b.dataset.rid+" "+nm+" 교체를 기록했습니다");}));
+  }
+
+  // ===== 기록 =====
+  let baseHist=[];
+  function renderHist(){
+    const runs=baseHist.concat(store.get("simRuns",[])).slice(-12);
+    $("tHist").innerHTML=runs.slice().reverse().map(r=>`<tr><td class="mono">${r.date}</td><td class="r">${Math.round(r.coverage*100)}%</td><td class="r">${r.runtime_min}분</td><td class="r">${r.area_m2||"—"} m²</td><td class="small">${r.notes||""}</td></tr>`).join("");
+    const sv=$("hChart");sv.innerHTML="";const NS="http://www.w3.org/2000/svg";
+    const E=(t,a,x)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;sv.appendChild(e);return e;};
+    const x0=40,y0=16,w=480,h=170,bw=w/Math.max(runs.length,1);
+    [.7,.8,.9,1].forEach(v=>{const y=y0+h-(v-.7)/.3*h;E("line",{x1:x0,y1:y,x2:x0+w,y2:y,stroke:"#e5e8e1"});E("text",{x:x0-6,y:y+4,"text-anchor":"end","font-size":11,fill:"#5b6672"},Math.round(v*100)+"%");});
+    [60,80,100].forEach(m=>{const y=y0+h-(m-50)/60*h;E("text",{x:x0+w+6,y:y+4,"font-size":11,fill:"#8a4f17"},m+"분");});
+    const pts=[];
+    runs.forEach((r,i)=>{const v=Math.max(.7,r.coverage),bh=(v-.7)/.3*h,x=x0+i*bw+bw*.2,sim=(r.notes||"").includes("시뮬레이션");
+      E("rect",{x,y:y0+h-bh,width:bw*.6,height:bh,rx:3,fill:sim?"#8fb1d9":"#a9c3a3"});
+      pts.push((x+bw*.3)+","+(y0+h-(Math.min(110,r.runtime_min)-50)/60*h));
+      const d=r.date.slice(5).replace("-","/");if(i%2===0||i===runs.length-1)E("text",{x:x+bw*.3,y:y0+h+16,"text-anchor":"middle","font-size":10.5,fill:"#5b6672"},d);});
+    E("polyline",{points:pts.join(" "),fill:"none",stroke:"#c27c3a","stroke-width":2});
+    pts.forEach(p=>{const [x,y]=p.split(",");E("circle",{cx:x,cy:y,r:3,fill:"#c27c3a"});});
+    E("text",{x:x0,y:y0+h+34,"font-size":11,fill:"#5b6672"},"막대 = 청소율 (파랑 = 이 브라우저의 시뮬레이션 실행), 선 = 걸린 시간");
+  }
+
+  // ===== 시작 =====
+  Promise.all([
+    fetch("data/schedule.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch("data/history.json",{cache:"no-store"}).then(r=>r.ok?r.json():null).catch(()=>null)
+  ]).then(([s,h])=>{
+    if(!sch) sch=s&&s.weekly?{weekly:s.weekly,oneoff:s.oneoff||[],blackout:s.blackout||[]}:JSON.parse(JSON.stringify(DEFAULT_SCH));
+    baseHist=h&&h.runs?h.runs:[{date:"2026-10-03",coverage:.91,runtime_min:74,area_m2:213},{date:"2026-10-10",coverage:.938,runtime_min:77,area_m2:219}];
+    renderSch();renderHealth();renderCons();renderHist();
+  });
+  setInterval(renderHealth,30000);
+  addLog(now(),"관리 페이지 열림 · 시뮬레이션 모드","info");
+})();
+</script>
+</body>
+</html>

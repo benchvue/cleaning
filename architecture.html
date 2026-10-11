@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>청소 로봇 아키텍처</title>
+<meta name="description" content="본당 청소 로봇 시스템 아키텍처: 시스템 경계, 계층, 운행 데이터 흐름, 좌표계, AprilTag 위치 오차 분석">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@600;700&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+<style>
+  .doclinks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .doclinks a{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fff}
+  .doclinks a:hover{border-color:var(--sage);background:var(--sage-soft)}
+  .doclinks b{font-size:17px;display:block;margin-bottom:4px}
+  .flowgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:14px;align-items:start}
+  @media (max-width:820px){.flowgrid{grid-template-columns:1fr}}
+  .flowgrid canvas{display:block;border-radius:6px}
+  .log{list-style:none;margin:0;padding:0;font-size:13px;display:flex;flex-direction:column;gap:3px;max-height:220px;overflow:auto}
+  .log li{border-bottom:1px dashed var(--line);padding-bottom:3px}
+  .log .mono{color:var(--oak);margin-right:6px}
+  .calc{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 14px}
+  .calc label.f output{font-family:var(--f-mono);color:var(--ink);font-size:13px}
+  .heat{position:relative}
+  .heat canvas{display:block;width:100%;height:auto;border-radius:6px;image-rendering:auto}
+  .scale{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+  .scale .bar{height:10px;width:200px;border-radius:5px;background:linear-gradient(90deg,#2f8a4f,#9cc56b,#f1c84b,#e48a3a,#b83a32)}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+  .kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+  .kpi small{display:block;color:var(--muted);font-size:12px}
+  .kpi b{font-family:var(--f-mono);font-size:19px;font-weight:500}
+  td.mono{white-space:nowrap}
+</style>
+</head>
+<body>
+<header class="topnav"><div class="in">
+  <a class="brand" href="index.html"><svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#7f8f63"/><circle cx="13" cy="13" r="4" fill="#fff"/><path d="M13 2v4" stroke="#fff" stroke-width="2"/></svg>본당 청소 로봇</a>
+  <nav aria-label="페이지">
+    <a href="index.html">성도 페이지</a>
+    <a href="overview.html">도입 안내</a>
+    <a href="architecture.html" aria-current="page">아키텍처</a>
+    <a href="software.html">소프트웨어</a>
+    <a href="hardware.html">하드웨어</a>
+    <a href="maintain.html">관리</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <span class="audience">개발자용</span>
+  <h1>청소 로봇 아키텍처</h1>
+  <p class="lede">Dreame L40 Ultra Gen 2 3대(순정 펌웨어)를 교회 엣지 서버가 Home Assistant·Matter로 지휘하고, 천장 카메라가 로봇 윗면 AprilTag로 위치를 잽니다. 이 페이지는 전체 구조와 위치 정확도를 다루고, 세부는 소프트웨어·하드웨어 문서로 나눴습니다.</p>
+  <div class="doclinks" style="margin-top:16px">
+    <a href="software.html"><b>소프트웨어 →</b><span class="small muted">서비스 구성, 상태도, 시퀀스, 데이터 흐름, API·MQTT, DB, 알고리즘, Docker 시뮬레이션</span></a>
+    <a href="hardware.html"><b>하드웨어 →</b><span class="small muted">BOM, 네트워크·전원 구성, 카메라 배치, 태그 부착, 의자 통과 치수, 설치 절차</span></a>
+  </div>
+  <nav class="toc" aria-label="목차">
+    <a href="#context">1 시스템 경계</a><a href="#layers">2 계층</a><a href="#flow">3 운행 데이터 흐름</a><a href="#frames">4 좌표계</a><a href="#tag">5 AprilTag 오차</a><a href="#adr">6 설계 결정</a>
+  </nav>
+
+  <section class="sec" id="context">
+    <div class="secnum">1 · 시스템 경계</div>
+    <h2>누가 무엇을 통해 시스템을 쓰는가</h2>
+    <div class="fig wide"><svg id="dContext" viewBox="0 0 1000 470" role="img" aria-label="시스템 컨텍스트 다이어그램"></svg></div>
+    <p class="cap">점선 상자는 교회가 통제하지 않는 외부 시스템입니다. 로봇 상태 일부(지도, 청소 면적, 소모품)만 Dreame 클라우드를 거치고, 명령·위치·영상은 교회 안에서 끝납니다.</p>
+  </section>
+
+  <section class="sec" id="layers">
+    <div class="secnum">2 · 계층</div>
+    <h2>도메인 로직은 로봇 종류를 모릅니다</h2>
+    <div class="fig wide"><svg id="dLayers" viewBox="0 0 1000 430" role="img" aria-label="계층 아키텍처"></svg></div>
+    <p class="cap">RobotPort 인터페이스 하나로 실제 로봇(DreameAdapter)과 시뮬레이션(SimAdapter)을 바꿔 끼웁니다. Windows 11 Docker에서 검증한 Fleet·Coverage 코드가 현장에서 그대로 돕니다.</p>
+  </section>
+
+  <section class="sec" id="flow">
+    <div class="secnum">3 · 운행 데이터 흐름</div>
+    <h2>3대가 운행하는 동안 장비 사이로 흐르는 신호</h2>
+    <p>왼쪽은 실제 계획대로 움직이는 가상 시뮬레이션이고, 오른쪽은 같은 순간 장비 사이로 오가는 메시지입니다. 로봇 상태는 Wi-Fi → Home Assistant(Matter), 위치는 천장 카메라 → Tracker, 명령은 Fleet Manager → Home Assistant → 로봇 방향으로 흐릅니다.</p>
+    <div class="btnrow">
+      <button class="btn pri" id="fPlay" type="button">일시정지</button>
+      <div class="seg" role="group" aria-label="속도"><button type="button" data-r="40">0.7×</button><button type="button" data-r="60" aria-pressed="true">1×</button><button type="button" data-r="150">2.5×</button></div>
+      <button class="btn" id="fReset" type="button">처음부터</button>
+      <span class="small muted" id="fClock">09:00</span>
+    </div>
+    <div class="flowgrid">
+      <div class="fig"><canvas id="fMap"></canvas><div class="legend" style="margin-top:6px"><span><i style="background:#4aa062;opacity:.6"></i>청소 완료</span><span><i style="background:#1c2633"></i>천장 카메라</span><span><i style="background:#b83a32"></i>문 사용 중</span></div></div>
+      <div class="fig"><svg id="dHw" viewBox="0 0 520 560" role="img" aria-label="하드웨어와 지휘 시스템 데이터 흐름"></svg>
+        <div class="legend" style="margin-top:6px"><span><i style="background:#2f6db0"></i>로봇 상태</span><span><i style="background:#7f8f63"></i>카메라 위치</span><span><i style="background:#c27c3a"></i>명령</span><span><i style="background:#8b949c"></i>클라우드</span><span><i style="background:#1c2633"></i>웹</span></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="tbl"><table><thead><tr><th>로봇</th><th>상태</th><th class="r">배터리</th><th>태그</th></tr></thead><tbody id="fTable"></tbody></table></div>
+      <div class="card" style="padding:12px 16px"><h3 style="font-size:14px">Fleet Manager 이벤트</h3><ol class="log" id="fLog"></ol></div>
+    </div>
+  </section>
+
+  <section class="sec" id="frames">
+    <div class="secnum">4 · 좌표계</div>
+    <h2>모든 위치는 본당 도면 좌표(F)로 모읍니다</h2>
+    <div class="fig wide"><svg id="dFrames" viewBox="0 0 1000 330" role="img" aria-label="좌표계 변환"></svg></div>
+    <div class="tbl"><table>
+      <thead><tr><th>변환</th><th>구하는 법</th><th>언제</th></tr></thead>
+      <tbody>
+        <tr><td><code>K<sub>i</sub>, d<sub>i</sub></code> 카메라 내부·왜곡</td><td>체커보드 30장, OpenCV <code>calibrateCamera</code> (어안이면 <code>fisheye</code>)</td><td>설치 전 1회</td></tr>
+        <tr><td><code>H<sub>i</sub></code> 이미지 → F (z = 0.098 m 평면)</td><td>바닥 ArUco 6개 실측 좌표로 바닥 호모그래피를 구한 뒤 태그 높이만큼 평면 이동</td><td>설치 후, 카메라가 움직이면</td></tr>
+        <tr><td><code>T<sub>k</sub></code> 로봇 k 지도 → F</td><td>지도 위 기준점 3–4개(벽 모서리, 도크)로 닮음 변환 최소제곱</td><td>지도 재작성 시</td></tr>
+        <tr><td><code>t<sub>tag</sub></code> 태그 중심 → 로봇 중심</td><td>로봇을 바닥 표시 위에 놓고 4방향 측정</td><td>태그 부착 후 1회</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="sec" id="tag">
+    <div class="secnum">5 · AprilTag 위치 오차</div>
+    <h2>3대 모두 태그를 달면 위치 오차는 95% 기준 약 3–6 cm</h2>
+    <p>세 로봇 윗면에 서로 다른 번호의 AprilTag(tag36h11, ID 0·1·2)를 붙이고 천장 카메라로 찾는 경우를 계산했습니다. 결론부터 말하면 <b>태그가 보일 때는 3–6 cm(95%)</b>, <b>의자 밑에 들어가 가려지면 카메라로는 잴 수 없어</b> 로봇이 보고하는 위치와 이동 모델로 이어 붙여야 하며 이때는 약 10–30 cm입니다. 벽에 단 카메라 2대로는 먼 곳의 태그가 너무 작아져 검출이 안 됩니다.</p>
+
+    <div class="kpis" id="tagKpi"></div>
+
+    <div class="card">
+      <h3>계산 조건 (바꿔 보세요)</h3>
+      <div class="calc">
+        <label class="f">천장 카메라 높이 <output id="oH">6.0 m</output><input type="range" id="iH" min="4" max="8" step="0.1" value="6.0"></label>
+        <label class="f">카메라 배치<select id="iGrid"><option value="2x2" selected>2 × 2 (4대)</option><option value="3x2">3 × 2 (6대)</option><option value="3x3">3 × 3 (9대)</option></select></label>
+        <label class="f">해상도<select id="iRes"><option value="1920">1080p (1920)</option><option value="2560">4MP (2560)</option><option value="3840" selected>4K (3840)</option></select></label>
+        <label class="f">렌즈 화각 (가로/세로)<select id="iFov"><option value="90,52">90° / 52°</option><option value="103,56" selected>103° / 56° (2.8 mm)</option><option value="120,68">120° / 68°</option></select></label>
+        <label class="f">태그 크기 (바깥) <output id="oT">10 cm</output><input type="range" id="iT" min="6" max="14" step="1" value="10"></label>
+        <label class="f">보정 잔차 (중앙/가장자리 추가) <output id="oC">8 / 12 mm</output><input type="range" id="iC" min="3" max="20" step="1" value="8"></label>
+        <label class="f">시간 동기 오차 <output id="oS">30 ms</output><input type="range" id="iS" min="5" max="150" step="5" value="30"></label>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="fig heat">
+        <canvas id="heat" width="800" height="720" aria-label="본당 바닥 위치 오차 지도"></canvas>
+        <div class="scale" style="margin-top:8px"><span>95% 오차</span><span class="mono">2 cm</span><span class="bar"></span><span class="mono">10 cm+</span><span><i style="display:inline-block;width:12px;height:12px;background:#8b949c;border-radius:2px;vertical-align:-2px"></i> 검출 불가</span><span><i style="display:inline-block;width:12px;height:12px;background:repeating-linear-gradient(45deg,#1c2633 0 1px,transparent 1px 4px);border-radius:2px;vertical-align:-2px"></i> 의자 밑 (가려짐)</span></div>
+      </div>
+      <div class="fig"><svg id="pxChart" viewBox="0 0 460 330" role="img" aria-label="카메라에서 거리별 태그 픽셀 크기 비교"></svg></div>
+    </div>
+
+    <div class="tbl"><table>
+      <thead><tr><th>오차 요인 (1축 σ)</th><th>모델</th><th class="r">카메라 바로 아래</th><th class="r">화면 가장자리</th></tr></thead>
+      <tbody id="budget"></tbody>
+    </table></div>
+    <p class="small muted">95% 반경 = 2.45 σ (2차원 정규분포). 겹치는 카메라가 있으면 역분산 가중으로 합칩니다. 시간 동기 오차는 로봇 속도 0.3 m/s 기준이며 카메라끼리 공통이라 합쳐도 줄지 않습니다.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>의자 밑에서 태그가 가려질 때</h3>
+        <ul class="plain small">
+          <li>좌석 높이 43–48 cm가 로봇(35 cm)을 완전히 덮어 위에서는 보이지 않습니다. 시뮬레이션 기준 운행 시간의 약 25–35%.</li>
+          <li><b>1순위</b>: Home Assistant가 주는 로봇 자체 위치(Dreame 지도 좌표)를 <code>T<sub>k</sub></code>로 변환. 예상 ±7–10 cm.</li>
+          <li><b>2순위</b>: 들어간 지점·시각과 나온 지점·시각 사이를 직선 보간, 좌우는 의자 다리 통로(±5 cm)로 제한. 앞뒤 방향 ±15–30 cm.</li>
+          <li>청소율 계산에는 태그가 보인 구간만 "확정"으로 칠하고, 가려진 구간은 "추정"으로 따로 표시합니다.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>3대를 동시에 추적할 때</h3>
+        <ul class="plain small">
+          <li>tag36h11은 해밍 거리 11이라 ID 0·1·2를 서로 잘못 읽을 확률은 사실상 0입니다.</li>
+          <li>로봇끼리 가장 가까이 오는 곳은 뒷문(폭 1.4 m)과 뒤쪽 통로이며, 교통 관제에 필요한 정확도(±20 cm)보다 10배 여유가 있습니다.</li>
+          <li>로봇 윗면은 평평해 다른 로봇이 태그를 가리지 않습니다.</li>
+          <li>태그 방향으로 로봇 진행 방향(헤딩)도 함께 얻습니다. 예상 ±2–4°.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout"><b>권장</b>: 천장 높이를 실측한 뒤 위 계산기로 대수를 정합니다. 6 m 이상이면 <b>4K 카메라 4대(2×2) + 10 cm 태그</b>로 바닥 전체를 덮고, 그보다 낮으면 6대(3×2)가 필요합니다. 벽면 카메라 2대 안은 버립니다.</div>
+  </section>
+
+  <section class="sec" id="adr">
+    <div class="secnum">6 · 설계 결정</div>
+    <h2>주요 결정과 이유</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>#</th><th>결정</th><th>이유</th><th>대안 / 되돌릴 조건</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">ADR-1</td><td>Dreame L40 Ultra Gen 2, 순정 펌웨어</td><td>Valetudo 지원 목록에 Gen 2가 없음. 신품 구매·보증 유지</td><td>Valetudo 지원 모델로 바꾸면 ValetudoAdapter 추가</td></tr>
+        <tr><td class="mono">ADR-2</td><td>명령은 Matter(로컬), 지도·소모품은 HA dreame_vacuum(클라우드)</td><td>명령 경로를 인터넷과 분리</td><td>Gen 2 통합이 안 되면 Matter + 카메라만으로 운영</td></tr>
+        <tr><td class="mono">ADR-3</td><td>위치는 천장 카메라 + AprilTag</td><td>펌웨어와 무관하게 3대를 같은 좌표계로 추적</td><td>로봇 자체 위치가 충분히 정확하면 카메라 수 축소</td></tr>
+        <tr><td class="mono">ADR-4</td><td>경로는 로봇이, 구역·순서·문은 서버가</td><td>순정 펌웨어는 경로를 외부에서 지정할 수 없음</td><td>—</td></tr>
+        <tr><td class="mono">ADR-5</td><td>성도 페이지는 GitHub Pages 정적 + 공개 JSON</td><td>로그인 없음, 무료, 서버 부하 없음</td><td>실시간 위치는 공개 API를 Cloudflare 터널로</td></tr>
+        <tr><td class="mono">ADR-6</td><td>관리 페이지 인증은 나중 (현재 없음)</td><td>개발 단계, 가상 데이터만 다룸</td><td>실제 로봇 연결 전 Cloudflare Access 필수</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <footer class="foot">
+    <a href="software.html">소프트웨어</a><a href="hardware.html">하드웨어</a><a href="maintain.html">관리</a><a href="https://github.com/benchvue/cleaning">GitHub 저장소</a>
+  </footer>
+</main>
+
+<script src="assets/js/layout.js"></script>
+<script src="assets/js/sim.js"></script>
+<script src="assets/js/diagram.js"></script>
+<script>
+(function(){
+  "use strict";
+  const D=Diagram, S=Sanctuary, $=id=>document.getElementById(id);
+
+  // 1. 시스템 경계
+  D.flow("dContext",{
+    groups:[{x:250,y:150,w:500,h:300,title:"교회 현장 (로컬 네트워크)",fill:"#f6f7f3",stroke:"#7f8f63"}],
+    nodes:[
+      {id:"mem",x:20,y:20,w:170,h:56,title:"성도",sub:"휴대폰 브라우저",kind:"sage"},
+      {id:"adm",x:20,y:110,w:170,h:56,title:"관리자 · 목회자",sub:"PC · 휴대폰",kind:"sage"},
+      {id:"dev",x:20,y:200,w:170,h:56,title:"개발자",sub:"Windows 11 · Docker",kind:"sage"},
+      {id:"pages",x:280,y:20,w:190,h:56,title:"GitHub Pages",sub:"index · overview · 문서",kind:"ext"},
+      {id:"gh",x:500,y:20,w:190,h:56,title:"GitHub",sub:"main · Actions · GHCR",kind:"ext"},
+      {id:"cf",x:730,y:20,w:250,h:56,title:"Cloudflare Tunnel / Access",sub:"공개 API · 관리자 인증 (예정)",kind:"ext"},
+      {id:"dcloud",x:800,y:200,w:180,h:56,title:"Dreame 클라우드",sub:"지도 · 면적 · 소모품",kind:"ext"},
+      {id:"edge",x:380,y:190,w:240,h:70,title:"엣지 서버",sub:"Fleet · Tracker · API · HA\nDocker Compose",kind:"dark"},
+      {id:"rob",x:280,y:330,w:180,h:56,title:"로봇 × 3",sub:"L40 Ultra Gen 2",kind:"blue"},
+      {id:"cam",x:540,y:330,w:180,h:56,title:"천장 카메라 × 4",sub:"PoE · RTSP",kind:"box"}
+    ],
+    edges:[
+      {a:"mem",b:"pages",label:"정적 페이지"},
+      {a:"pages",b:"cf",label:"공개 상태 JSON",bend:-40,dash:true},
+      {a:"adm",b:"cf",label:"관리 페이지",bend:30},
+      {a:"cf",b:"edge",label:"터널"},
+      {a:"dev",b:"gh",label:"git push",path:[[190,228],[226,228],[226,98],[595,98],[595,78]],labelAt:[300,98]},
+      {a:"gh",b:"pages",label:"배포"},
+      {a:"gh",b:"edge",label:"이미지 pull",dash:true},
+      {a:"edge",b:"rob",label:"Matter 명령"},
+      {a:"cam",b:"edge",label:"RTSP"},
+      {a:"rob",b:"dcloud",label:"상태 업로드 (Wi-Fi → 인터넷)",path:[[370,388],[370,430],[890,430],[890,258]],labelAt:[630,430],dash:true},
+      {a:"dcloud",b:"edge",label:"HA 통합",dash:true}
+    ]
+  });
+
+  // 2. 계층
+  D.flow("dLayers",{
+    groups:[
+      {x:10,y:10,w:980,h:80,title:"표현",fill:"#ffffff"},
+      {x:10,y:100,w:980,h:80,title:"API",fill:"#ffffff"},
+      {x:10,y:190,w:980,h:110,title:"도메인 (로봇 종류와 무관)",fill:"#f6f7f3",stroke:"#7f8f63"},
+      {x:10,y:310,w:980,h:110,title:"어댑터 · 인프라",fill:"#ffffff",stroke:"#c27c3a",dash:"5 3"}
+    ],
+    nodes:[
+      {id:"idx",x:130,y:30,w:200,h:46,title:"index.html",sub:"성도 · 공개 JSON",kind:"sage"},
+      {id:"mnt",x:360,y:30,w:200,h:46,title:"maintain.html",sub:"관리 · WebSocket",kind:"sage"},
+      {id:"docs",x:590,y:30,w:200,h:46,title:"overview · 문서",sub:"정적",kind:"box"},
+      {id:"api",x:130,y:120,w:430,h:46,title:"FastAPI",sub:"/public/* · /admin/* · /ws",kind:"box"},
+      {id:"pub",x:590,y:120,w:200,h:46,title:"Publisher",sub:"status.json → Pages",kind:"box"},
+      {id:"fleet",x:130,y:220,w:150,h:64,title:"Fleet",sub:"구역 · 재배분\n문 뮤텍스",kind:"active"},
+      {id:"sched",x:290,y:220,w:130,h:64,title:"Scheduler",sub:"주간 · 1회 · 제외일"},
+      {id:"cov",x:430,y:220,w:130,h:64,title:"Coverage",sub:"10 cm 격자"},
+      {id:"fus",x:570,y:220,w:150,h:64,title:"Pose Fusion",sub:"카메라 + 로봇 위치\n칼만 필터"},
+      {id:"hist",x:730,y:220,w:130,h:64,title:"History",sub:"기록 · 소모품"},
+      {id:"port",x:20,y:220,w:100,h:64,title:"RobotPort",sub:"인터페이스",kind:"oak"},
+      {id:"dre",x:130,y:340,w:160,h:64,title:"DreameAdapter",sub:"HA REST/WS\nMatter",kind:"blue"},
+      {id:"sim",x:300,y:340,w:150,h:64,title:"SimAdapter",sub:"Gazebo / 내장 sim",kind:"sage"},
+      {id:"trk",x:460,y:340,w:150,h:64,title:"Tracker",sub:"RTSP → AprilTag"},
+      {id:"mq",x:620,y:340,w:110,h:64,title:"MQTT",sub:"Mosquitto"},
+      {id:"db",x:740,y:340,w:110,h:64,title:"PostgreSQL",kind:"store"},
+      {id:"cfg",x:860,y:340,w:120,h:64,title:"sanctuary.yaml",sub:"도면 · 구역"}
+    ],
+    edges:[
+      {a:"idx",b:"pub",label:"",dash:true,bend:-30},{a:"mnt",b:"api"},{a:"api",b:"fleet"},{a:"api",b:"hist",bend:-20},
+      {a:"fleet",b:"port"},{a:"port",b:"dre"},{a:"port",b:"sim",bend:-20},{a:"trk",b:"fus"},{a:"fus",b:"cov"},{a:"sched",b:"fleet"},{a:"hist",b:"db"},{a:"cov",b:"hist",bend:24}
+    ]
+  });
+
+  // 4. 좌표계
+  D.flow("dFrames",{
+    nodes:[
+      {id:"img",x:20,y:30,w:170,h:64,title:"카메라 i 이미지",sub:"(u, v) px",kind:"box"},
+      {id:"und",x:230,y:30,w:170,h:64,title:"왜곡 보정",sub:"K_i, d_i",kind:"box"},
+      {id:"tag",x:440,y:30,w:170,h:64,title:"태그 중심 (F)",sub:"z = 0.098 m 평면",kind:"box"},
+      {id:"F",x:600,y:150,w:200,h:90,title:"로봇 중심 F",sub:"Pose Fusion (칼만)\n(x, y, θ) m · 원점 강단 왼쪽",kind:"active"},
+      {id:"rmap",x:20,y:250,w:170,h:64,title:"로봇 k 지도",sub:"HA가 주는 Dreame 좌표",kind:"blue"},
+      {id:"out",x:830,y:150,w:150,h:90,title:"사용처",sub:"교통 관제 · 청소율\n오버레이 · 지도",kind:"dark"}
+    ],
+    edges:[
+      {a:"img",b:"und",label:"undistort"},
+      {a:"und",b:"tag",label:"H_i"},
+      {a:"tag",b:"F",label:"− t_tag (부착 오프셋)"},
+      {a:"rmap",b:"F",label:"T_k 닮음 변환 (가려질 때)"},
+      {a:"F",b:"out"}
+    ]
+  });
+
+  // 3. 운행 데이터 흐름 (하드웨어 다이어그램 + 시뮬레이션)
+  D.flow("dHw",{
+    groups:[{x:8,y:262,w:504,h:220,title:"미니 PC · Docker · UPS",fill:"#f6f7f3",stroke:"#7f8f63"}],
+    nodes:[
+      {id:"rob",x:20,y:10,w:210,h:50,title:"로봇 × 3",sub:"Wi-Fi 2.4 GHz",kind:"blue"},
+      {id:"cam",x:290,y:10,w:210,h:50,title:"천장 카메라 × 4",sub:"PoE · RTSP"},
+      {id:"ap",x:20,y:100,w:210,h:50,title:"Wi-Fi AP",sub:"로봇 전용 VLAN 20"},
+      {id:"net",x:290,y:100,w:210,h:50,title:"인터넷",sub:"Dreame · Cloudflare",kind:"ext"},
+      {id:"sw",x:20,y:190,w:210,h:50,title:"PoE 스위치",sub:"VLAN 10/20/30"},
+      {id:"rt",x:290,y:190,w:210,h:50,title:"공유기 · 방화벽",sub:"포트 개방 없음"},
+      {id:"ha",x:20,y:292,w:220,h:46,title:"Home Assistant",sub:"Matter · dreame_vacuum",kind:"blue"},
+      {id:"trk",x:280,y:292,w:220,h:46,title:"Tracker",sub:"AprilTag → F 좌표"},
+      {id:"fl",x:20,y:358,w:480,h:44,title:"Fleet Manager",sub:"대기 중",kind:"dark"},
+      {id:"api",x:20,y:422,w:220,h:44,title:"API · WebSocket",sub:"Scheduler 포함"},
+      {id:"db",x:280,y:422,w:220,h:44,title:"History DB",sub:"PostgreSQL"},
+      {id:"web",x:20,y:500,w:480,h:46,title:"웹",sub:"성도: 지도·기록 · 관리자: 영상·제어",kind:"sage"}
+    ],
+    edges:[
+      {id:"e_rob_ap",a:"rob",b:"ap",color:"#c9cec4",w:2},
+      {id:"e_ap_sw",a:"ap",b:"sw",color:"#c9cec4",w:2},
+      {id:"e_cam_sw",a:"cam",b:"sw",color:"#c9cec4",w:2},
+      {id:"e_sw_rt",a:"sw",b:"rt",color:"#c9cec4",w:2},
+      {id:"e_rt_net",a:"rt",b:"net",color:"#c9cec4",w:2},
+      {id:"e_sw_ha",a:"sw",b:"ha",color:"#c9cec4",w:2,ax:-40,bx:-50},
+      {id:"e_sw_trk",a:"sw",b:"trk",color:"#c9cec4",w:2,ax:60},
+      {id:"e_ha_fl",a:"ha",b:"fl",color:"#c9cec4",w:2,ax:40,bx:-170},
+      {id:"e_fl_ha",a:"fl",b:"ha",color:"#c9cec4",w:2,ax:-210,bx:-70},
+      {id:"e_trk_fl",a:"trk",b:"fl",color:"#c9cec4",w:2,bx:130},
+      {id:"e_fl_api",a:"fl",b:"api",color:"#c9cec4",w:2,ax:-130},
+      {id:"e_fl_db",a:"fl",b:"db",color:"#c9cec4",w:2,ax:130},
+      {id:"e_api_web",a:"api",b:"web",color:"#c9cec4",w:2,bx:-130}
+    ]
+  });
+  const hw=$("dHw"), flSub=[...hw.querySelectorAll("text")].find(t=>t.textContent==="대기 중");
+  const pk=S.svgEl("g",{},hw), LK={};
+  ["e_rob_ap","e_ap_sw","e_cam_sw","e_sw_rt","e_rt_net","e_sw_ha","e_sw_trk","e_ha_fl","e_fl_ha","e_trk_fl","e_fl_api","e_fl_db","e_api_web"].forEach(k=>{const p=$(k);LK[k]={p,len:p.getTotalLength()};p.removeAttribute("marker-end");});
+  const packets=[];
+  function chain(list,color){packets.push({list,k:0,t:0,c:S.svgEl("circle",{r:4.5,fill:color,stroke:"#fff","stroke-width":1.3},pk)});}
+  function stepPk(dt){
+    for(let i=packets.length-1;i>=0;i--){
+      const p=packets[i];let nm=p.list[p.k].replace("~",""),L=LK[nm];
+      p.t+=dt*180/Math.max(L.len,30);
+      if(p.t>=1){p.k++;p.t=0;if(p.k>=p.list.length){p.c.remove();packets.splice(i,1);continue;}}
+      const raw=p.list[p.k],rv=raw[0]==="~";nm=raw.replace("~","");L=LK[nm];
+      const pt=L.p.getPointAtLength((rv?1-p.t:p.t)*L.len);p.c.setAttribute("cx",pt.x);p.c.setAttribute("cy",pt.y);
+    }
+  }
+  const CMD=["e_fl_ha","~e_sw_ha","~e_ap_sw","~e_rob_ap"];
+  const logEl=$("fLog");
+  const sim=new CleaningSim({onEvent:e=>{
+    const li=document.createElement("li");li.innerHTML='<span class="mono">'+e.clock+"</span>"+e.text;logEl.prepend(li);
+    while(logEl.children.length>40)logEl.lastChild.remove();
+    if(flSub) flSub.textContent=e.text.length>34?e.text.slice(0,33)+"…":e.text;
+    if(["dispatch","return","door","rebalance","admin"].includes(e.kind)) chain(CMD,"#c27c3a");
+  }});
+  const view=new SimView($("fMap"),sim,{zones:true,cams:true});
+  const acc={st:0,cam:0,cl:0,web:0};
+  const tb=$("fTable");
+  tb.innerHTML=sim.robots.map(r=>`<tr><td><span class="dot" style="background:${r.color}"></span> ${r.id} · ${r.def.zoneName}</td><td id="fs${r.id}"></td><td class="r" id="fb${r.id}"></td><td id="ft${r.id}"></td></tr>`).join("");
+  let lastT=null;
+  const player=new SimPlayer(sim,view,{rate:60,autoplay:true,loop:true,loopPause:5,reduceToEnd:true,onTick:()=>{
+    const now=performance.now(),dt=lastT==null?0:Math.min(.05,(now-lastT)/1000);lastT=now;
+    if(player&&player.playing&&sim.phase==="running"){
+      const active=sim.robots.filter(r=>!["queued","done","docked"].includes(r.state));
+      if(active.length){acc.st+=dt;acc.cam+=dt;acc.cl+=dt;acc.web+=dt;
+        if(acc.st>.5){acc.st=0;const r=active[Math.floor(Math.random()*active.length)];chain(["e_rob_ap","e_ap_sw","e_sw_ha","e_ha_fl"],r.color);}
+        if(acc.cam>.42){acc.cam=0;chain(["e_cam_sw","e_sw_trk","e_trk_fl"],"#7f8f63");}
+        if(acc.cl>1.7){acc.cl=0;chain(["e_rob_ap","e_ap_sw","e_sw_rt","e_rt_net"],"#8b949c");}
+        if(acc.web>.9){acc.web=0;chain(["e_fl_api","e_api_web"],"#1c2633");if(Math.random()<.4)chain(["e_fl_db"],"#1c2633");}
+      }
+    }
+    stepPk(player&&player.playing?dt:0);
+    $("fClock").textContent="토 "+sim.clock();
+    sim.robots.forEach(r=>{$("fs"+r.id).textContent=SimUtil.STATE_KO[r.state];$("fb"+r.id).textContent=Math.round(r.battery)+"%";
+      const vis=["docked","done","queued","emptying"].includes(r.state)?"—":(r.under?"가려짐 (의자 밑)":"보임");
+      $("ft"+r.id).innerHTML=vis==="보임"?'<span class="chip c-good">보임</span>':vis==="—"?'<span class="chip c-mute">도크</span>':'<span class="chip c-warn">가려짐</span>';});
+  }});
+  const pb=$("fPlay");
+  pb.addEventListener("click",()=>{player.playing=!player.playing;pb.textContent=player.playing?"일시정지":"재생";});
+  document.querySelectorAll("#flow .seg button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("#flow .seg button").forEach(x=>x.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");player.rate=+b.dataset.r;}));
+  $("fReset").addEventListener("click",()=>{logEl.innerHTML="";sim.reset();sim.start();player.playing=true;pb.textContent="일시정지";});
+
+  // 5. AprilTag 오차 모델
+  const TAG_H=0.098, V=0.3;
+  function params(){
+    const [hf,vf]=$("iFov").value.split(",").map(Number);
+    const [nc,nr]=$("iGrid").value.split("x").map(Number);
+    return {Hc:+$("iH").value,W:+$("iRes").value,hf:hf*Math.PI/180,vf:vf*Math.PI/180,nc,nr,tag:+$("iT").value/100,c0:+$("iC").value/1000,c1:(+$("iC").value*1.5)/1000,st:+$("iS").value/1000};
+  }
+  function cams(p){const out=[];for(let j=0;j<p.nr;j++)for(let i=0;i<p.nc;i++)out.push({x:(i+.5)*20/p.nc,y:4.6+(j+.5)*13.4/p.nr});return out;}
+  function camErr(p,c,x,y){
+    const H=p.Hc-TAG_H,xh=H*Math.tan(p.hf/2),yh=H*Math.tan(p.vf/2),dx=x-c.x,dy=y-c.y;
+    if(Math.abs(dx)>xh||Math.abs(dy)>yh) return null;
+    const f=(p.W/2)/Math.tan(p.hf/2),g0=H/f,rn2=((dx/xh)**2+(dy/yh)**2)/2,g=g0*(1+.35*rn2);
+    const px=.8*p.tag/g; if(px<14) return {px,ok:false};
+    const r=Math.hypot(dx,dy);
+    const det=.1*g, hgt=.003*r/H, cal=p.c0+p.c1*rn2, mount=.003;
+    return {px,ok:true,var:det*det+hgt*hgt+cal*cal+mount*mount,parts:{det,hgt,cal,mount},g};
+  }
+  function fused(p,cs,x,y){
+    let inv=0,best=0;cs.forEach(c=>{const e=camErr(p,c,x,y);if(e){best=Math.max(best,e.px);if(e.ok)inv+=1/e.var;}});
+    if(!inv) return {ok:false,px:best};
+    const tim=V*p.st,s=Math.sqrt(1/inv+tim*tim);
+    return {ok:true,sigma:s,r95:2.45*s,px:best};
+  }
+  function color(cm){const st=[[2,[47,138,79]],[3.5,[156,197,107]],[5,[241,200,75]],[7,[228,138,58]],[10,[184,58,50]]];
+    if(cm<=st[0][0])return st[0][1];for(let i=1;i<st.length;i++){if(cm<=st[i][0]){const a=st[i-1],b=st[i],t=(cm-a[0])/(b[0]-a[0]);return a[1].map((v,k)=>Math.round(v+(b[1][k]-v)*t));}}return st[st.length-1][1];}
+  const hc=$("heat"),hx=hc.getContext("2d");
+  function drawHeat(){
+    const p=params(),cs=cams(p),sc=40,W=20*sc,Hh=18*sc;hc.width=W;hc.height=Hh;
+    hx.fillStyle="#fff";hx.fillRect(0,0,W,Hh);
+    const step=.2;let n=0,nOk=0,vals=[],under=0;
+    for(let y=step/2;y<18;y+=step)for(let x=step/2;x<20;x+=step){
+      if(S.inNogo(x,y,0)) continue;
+      n++;const f=fused(p,cs,x,y);
+      if(f.ok){nOk++;vals.push(f.r95);const c=color(f.r95*100);hx.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;}
+      else hx.fillStyle="#8b949c";
+      hx.fillRect((x-step/2)*sc,(y-step/2)*sc,step*sc+.5,step*sc+.5);
+    }
+    // 금지 구역
+    S.L.nogo.forEach(z=>{hx.fillStyle="#fbecea";hx.fillRect(z.x*sc,z.y*sc,z.w*sc,z.h*sc);hx.strokeStyle="rgba(192,57,43,.6)";hx.setLineDash([5,3]);hx.strokeRect(z.x*sc,z.y*sc,z.w*sc,z.h*sc);hx.setLineDash([]);});
+    hx.fillStyle="#9b2c22";hx.font="700 18px IBM Plex Sans KR, sans-serif";hx.textAlign="center";hx.fillText("강단 · 금지 구역",10*sc,2.4*sc);
+    // 의자 (가려짐 해치)
+    S.CHAIRS.forEach(ch=>{hx.save();hx.beginPath();ch.corners.forEach((q,i)=>i?hx.lineTo(q[0]*sc,q[1]*sc):hx.moveTo(q[0]*sc,q[1]*sc));hx.closePath();hx.clip();
+      hx.strokeStyle="rgba(28,38,51,.55)";hx.lineWidth=1.2;for(let k=-40;k<80;k+=5){hx.beginPath();hx.moveTo(ch.cx*sc-40+k,ch.cy*sc+40);hx.lineTo(ch.cx*sc+k,ch.cy*sc-40+0);hx.stroke();}hx.restore();
+      hx.beginPath();ch.corners.forEach((q,i)=>i?hx.lineTo(q[0]*sc,q[1]*sc):hx.moveTo(q[0]*sc,q[1]*sc));hx.closePath();hx.strokeStyle="rgba(28,38,51,.35)";hx.lineWidth=1;hx.stroke();});
+    // 카메라와 화각
+    const H=p.Hc-TAG_H,xh=H*Math.tan(p.hf/2),yh=H*Math.tan(p.vf/2);
+    cs.forEach((c,i)=>{hx.strokeStyle="rgba(28,38,51,.55)";hx.setLineDash([6,4]);hx.strokeRect((c.x-xh)*sc,(c.y-yh)*sc,2*xh*sc,2*yh*sc);hx.setLineDash([]);
+      hx.fillStyle="#1c2633";hx.fillRect(c.x*sc-8,c.y*sc-8,16,16);hx.fillStyle="#fff";hx.font="700 11px IBM Plex Mono, monospace";hx.textAlign="center";hx.textBaseline="middle";hx.fillText("C"+(i+1),c.x*sc,c.y*sc);hx.textBaseline="alphabetic";});
+    hx.strokeStyle="#1c2633";hx.lineWidth=3;hx.strokeRect(1.5,1.5,W-3,Hh-3);
+    vals.sort((a,b)=>a-b);
+    const med=vals.length?vals[Math.floor(vals.length/2)]:NaN,p95=vals.length?vals[Math.floor(vals.length*.95)]:NaN,mx=vals.length?vals[vals.length-1]:NaN;
+    const f=(p.W/2)/Math.tan(p.hf/2),g0=(p.Hc-TAG_H)/f;
+    $("tagKpi").innerHTML=[
+      ["바닥 덮는 비율",Math.round(nOk/n*100)+"%"],["95% 오차 (중간값)",(med*100).toFixed(1)+" cm"],["95% 오차 (나쁜 5%)",(p95*100).toFixed(1)+" cm"],["최악",(mx*100).toFixed(1)+" cm"],
+      ["픽셀 크기 (중앙)",(g0*1000).toFixed(1)+" mm/px"],["태그 검은 면",Math.round(.8*p.tag/g0)+" px"],["카메라 수",cs.length+"대"]
+    ].map(([k,v])=>`<div class="kpi"><small>${k}</small><b>${v}</b></div>`).join("");
+    // 오차 예산 표
+    const c0={x:10,y:11},center=camErr(p,c0,10,11),edgeX=c0.x+xh*.9,edgeY=c0.y+yh*.9,edge=camErr(p,c0,edgeX,edgeY);
+    const tim=V*p.st,mm=v=>(v*1000).toFixed(1)+" mm";
+    const rows=[["검출 노이즈","0.1 px × 픽셀 크기",center&&center.parts?.det,edge&&edge.parts?.det],["태그 높이 불확실","±3 mm × tan(시야각)",center&&center.parts?.hgt,edge&&edge.parts?.hgt],["보정 잔차","중앙 + 가장자리² 증가",center&&center.parts?.cal,edge&&edge.parts?.cal],["태그 부착 오프셋","측정 후 보정",.003,.003],["시간 동기","0.3 m/s × 동기 오차",tim,tim]];
+    let s1=0,s2=0;
+    $("budget").innerHTML=rows.map(r=>{s1+=(r[2]||0)**2;s2+=(r[3]||0)**2;return `<tr><td>${r[0]}</td><td class="small muted">${r[1]}</td><td class="r">${r[2]!=null?mm(r[2]):"검출 불가"}</td><td class="r">${r[3]!=null?mm(r[3]):"검출 불가"}</td></tr>`;}).join("")+
+      `<tr><td><b>합계 σ (1대)</b></td><td class="small muted">제곱합의 제곱근</td><td class="r"><b>${mm(Math.sqrt(s1))}</b></td><td class="r"><b>${mm(Math.sqrt(s2))}</b></td></tr>`+
+      `<tr><td><b>95% 반경</b></td><td class="small muted">2.45 σ</td><td class="r"><b>${(2.45*Math.sqrt(s1)*100).toFixed(1)} cm</b></td><td class="r"><b>${(2.45*Math.sqrt(s2)*100).toFixed(1)} cm</b></td></tr>`;
+    drawPx(p);
+  }
+  // 거리별 태그 픽셀 크기 (천장 vs 벽)
+  function drawPx(p){
+    const sv=$("pxChart");sv.innerHTML="";const E=(t,a,x)=>S.svgEl(t,a,sv,x);
+    const x0=50,y0=36,w=390,h=230,dmax=14,pmax=40,X=d=>x0+d/dmax*w,Y=v=>y0+h-Math.min(v,pmax)/pmax*h;
+    E("text",{x:16,y:20,"font-size":13,"font-weight":700,fill:"#1c2633"},"카메라에서 수평 거리별 태그 크기 (검은 면, px)");
+    [0,10,20,30,40].forEach(v=>{E("line",{x1:x0,y1:Y(v),x2:x0+w,y2:Y(v),stroke:"#e5e8e1"});E("text",{x:x0-6,y:Y(v)+4,"text-anchor":"end","font-size":11,fill:"#5b6672"},v);});
+    [0,2,4,6,8,10,12,14].forEach(d=>E("text",{x:X(d),y:y0+h+16,"text-anchor":"middle","font-size":11,fill:"#5b6672"},d+" m"));
+    E("rect",{x:x0,y:Y(14),width:w,height:Y(0)-Y(14),fill:"#b83a32",opacity:.07});
+    E("line",{x1:x0,y1:Y(14),x2:x0+w,y2:Y(14),stroke:"#b83a32","stroke-dasharray":"5 4"});
+    E("text",{x:x0+w-4,y:Y(14)-5,"text-anchor":"end","font-size":11,fill:"#b83a32"},"검출 한계 14 px");
+    // 천장 (현재 설정)
+    const H=p.Hc-TAG_H,f=(p.W/2)/Math.tan(p.hf/2),xh=H*Math.tan(p.hf/2);
+    let pts=[];for(let d=0;d<=Math.min(xh,dmax);d+=.1){const rn2=(d/xh)**2/2,g=H/f*(1+.35*rn2);pts.push(X(d)+","+Y(.8*p.tag/g));}
+    E("polyline",{points:pts.join(" "),fill:"none",stroke:"#3f8a55","stroke-width":2.5});
+    E("text",{x:X(Math.min(xh,dmax))-4,y:Y(.8*p.tag/(H/f*1.175))-8,"text-anchor":"end","font-size":11.5,"font-weight":700,fill:"#3f8a55"},"천장 "+p.Hc.toFixed(1)+" m · 현재 설정");
+    // 벽 카메라 1080p 4.5 m
+    const Hw=4.5-TAG_H,fw=960/Math.tan(50*Math.PI/180);pts=[];
+    for(let d=1;d<=dmax;d+=.1){const Dd=Math.hypot(d,Hw),beta=Math.atan(Hw/d),gr=Dd/(fw*Math.sin(beta)),gt=Dd/fw;pts.push(X(d)+","+Y(.8*p.tag/Math.max(gr,gt)));}
+    E("polyline",{points:pts.join(" "),fill:"none",stroke:"#c27c3a","stroke-width":2.5,"stroke-dasharray":"6 4"});
+    E("text",{x:X(4.2),y:Y(14)+18,"font-size":11.5,"font-weight":700,fill:"#8a4f17"},"벽 4.5 m · 1080p");
+    E("text",{x:X(8.6),y:Y(3)-6,"font-size":11,fill:"#8a4f17"},"멀면 검출 불가");
+    E("text",{x:16,y:y0+h+36,"font-size":11,fill:"#5b6672"},"태그 "+Math.round(p.tag*100)+" cm (검은 면 "+Math.round(p.tag*80)+" cm) · 렌즈 왜곡으로 가장자리 최대 18% 감소 가정");
+  }
+  ["iH","iGrid","iRes","iFov","iT","iC","iS"].forEach(id=>$(id).addEventListener("input",()=>{
+    $("oH").textContent=(+$("iH").value).toFixed(1)+" m";$("oT").textContent=$("iT").value+" cm";$("oC").textContent=$("iC").value+" / "+Math.round($("iC").value*1.5)+" mm";$("oS").textContent=$("iS").value+" ms";drawHeat();}));
+  drawHeat();
+})();
+</script>
+</body>
+</html>

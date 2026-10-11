@@ -1,0 +1,234 @@
+{
+ "sample": true,
+ "note": "설치 전 예시 데이터입니다. 실제 운영이 시작되면 엣지 서버가 이 형식으로 기록합니다.",
+ "runs": [
+  {
+   "date": "2026-07-25",
+   "start": "09:00",
+   "runtime_min": 68,
+   "coverage": 0.913,
+   "area_m2": 214,
+   "robots": {
+    "R1": {
+     "minutes": 57
+    },
+    "R2": {
+     "minutes": 68
+    },
+    "R3": {
+     "minutes": 66
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-08-01",
+   "start": "09:00",
+   "runtime_min": 67,
+   "coverage": 0.947,
+   "area_m2": 222,
+   "robots": {
+    "R1": {
+     "minutes": 57
+    },
+    "R2": {
+     "minutes": 63
+    },
+    "R3": {
+     "minutes": 65
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-08-08",
+   "start": "09:00",
+   "runtime_min": 70,
+   "coverage": 0.954,
+   "area_m2": 223,
+   "robots": {
+    "R1": {
+     "minutes": 62
+    },
+    "R2": {
+     "minutes": 70
+    },
+    "R3": {
+     "minutes": 65
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-08-15",
+   "start": "09:00",
+   "runtime_min": 71,
+   "coverage": 0.919,
+   "area_m2": 215,
+   "robots": {
+    "R1": {
+     "minutes": 63
+    },
+    "R2": {
+     "minutes": 67
+    },
+    "R3": {
+     "minutes": 66
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-08-22",
+   "start": "09:00",
+   "runtime_min": 82,
+   "coverage": 0.874,
+   "area_m2": 205,
+   "robots": {
+    "R1": {
+     "minutes": 74
+    },
+    "R2": {
+     "minutes": 81
+    },
+    "R3": {
+     "minutes": 75
+    }
+   },
+   "notes": "R2 브러시에 머리카락 감김 · 관리자가 제거 후 재개"
+  },
+  {
+   "date": "2026-08-29",
+   "start": "09:00",
+   "runtime_min": 65,
+   "coverage": 0.934,
+   "area_m2": 219,
+   "robots": {
+    "R1": {
+     "minutes": 53
+    },
+    "R2": {
+     "minutes": 61
+    },
+    "R3": {
+     "minutes": 60
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-09-05",
+   "start": "09:00",
+   "runtime_min": 71,
+   "coverage": 0.893,
+   "area_m2": 209,
+   "robots": {
+    "R1": {
+     "minutes": 63
+    },
+    "R2": {
+     "minutes": 67
+    },
+    "R3": {
+     "minutes": 68
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-09-12",
+   "start": "09:00",
+   "runtime_min": 68,
+   "coverage": 0.91,
+   "area_m2": 213,
+   "robots": {
+    "R1": {
+     "minutes": 56
+    },
+    "R2": {
+     "minutes": 68
+    },
+    "R3": {
+     "minutes": 62
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-09-19",
+   "start": "09:00",
+   "runtime_min": 69,
+   "coverage": 0.912,
+   "area_m2": 213,
+   "robots": {
+    "R1": {
+     "minutes": 61
+    },
+    "R2": {
+     "minutes": 65
+    },
+    "R3": {
+     "minutes": 63
+    }
+   },
+   "notes": "행사 후 의자 배치 변경 · 지도 확인"
+  },
+  {
+   "date": "2026-09-26",
+   "start": "09:00",
+   "runtime_min": 75,
+   "coverage": 0.935,
+   "area_m2": 219,
+   "robots": {
+    "R1": {
+     "minutes": 67
+    },
+    "R2": {
+     "minutes": 71
+    },
+    "R3": {
+     "minutes": 68
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-10-03",
+   "start": "09:00",
+   "runtime_min": 65,
+   "coverage": 0.894,
+   "area_m2": 209,
+   "robots": {
+    "R1": {
+     "minutes": 53
+    },
+    "R2": {
+     "minutes": 64
+    },
+    "R3": {
+     "minutes": 60
+    }
+   },
+   "notes": ""
+  },
+  {
+   "date": "2026-10-10",
+   "start": "09:00",
+   "runtime_min": 77,
+   "coverage": 0.938,
+   "area_m2": 219,
+   "robots": {
+    "R1": {
+     "minutes": 63
+    },
+    "R2": {
+     "minutes": 75
+    },
+    "R3": {
+     "minutes": 72
+    }
+   },
+   "notes": ""
+  }
+ ]
+}

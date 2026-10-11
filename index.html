@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>본당 청소 로봇</title>
+<meta name="description" content="본당 카페트를 로봇 3대가 매주 토요일 청소합니다. 청소 상황과 기록을 확인하세요.">
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@600;700&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+<style>
+  body{font-size:16px}
+  .pub{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:12px calc(40px + env(safe-area-inset-bottom,0px))}
+  .pubbar{display:flex;align-items:center;gap:10px;padding-block:6px 10px}
+  .pubbar .brand{font-size:17px}
+  .pubbar .chip{margin-left:auto}
+  .now{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,var(--sage-soft),#fff 70%)}
+  .now .row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .now .state{font-family:var(--f-display);font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .pulse{width:12px;height:12px;border-radius:50%;background:var(--good);box-shadow:0 0 0 0 rgba(47,138,79,.5);animation:pl 1.8s infinite}
+  .pulse.idle{background:var(--sage);animation:none}
+  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(47,138,79,.45)}70%{box-shadow:0 0 0 10px rgba(47,138,79,0)}100%{box-shadow:0 0 0 0 rgba(47,138,79,0)}}
+  .now .clock{font-family:var(--f-mono);font-size:15px;color:var(--muted);margin-left:auto}
+  .bigpct{font-family:var(--f-mono);font-size:34px;font-weight:500;line-height:1}
+  .meter.big{height:12px}
+  .mapcard{margin-top:12px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
+  .mapwrap{padding:10px 10px 4px}
+  .mapwrap canvas{display:block;border-radius:6px;touch-action:pan-y}
+  .mapctl{display:flex;align-items:center;gap:8px;padding:8px 10px 12px;flex-wrap:wrap}
+  .mapctl .btn{padding:7px 12px}
+  .maplegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);padding:0 12px 10px}
+  .maplegend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .robots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+  .rb{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+  .rb b{display:flex;align-items:center;gap:6px;font-size:15px}
+  .rb .z{font-size:11.5px;color:var(--muted)}
+  .rb .st{font-size:12.5px;font-weight:600}
+  .rb .meter{height:6px}
+  .rb .bt{font-size:11.5px;color:var(--muted);font-family:var(--f-mono)}
+  h2.ps{font-size:19px;margin:28px 0 10px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat{border:1px solid var(--line);border-radius:12px;padding:12px}
+  .stat small{display:block;color:var(--muted);font-size:12.5px}
+  .stat b{font-family:var(--f-mono);font-size:19px;font-weight:500}
+  .stat b.d{font-family:var(--f-body);font-size:16.5px;font-weight:600}
+  .how{display:flex;flex-direction:column;gap:10px}
+  .how .s{display:grid;grid-template-columns:52px 1fr;gap:12px;align-items:center}
+  .how svg{width:52px;height:52px}
+  .how p{margin:0;font-size:14.5px}
+  .hist svg{width:100%;height:auto;display:block}
+</style>
+</head>
+<body>
+<div class="pub">
+  <div class="pubbar">
+    <span class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11" fill="#7f8f63"/><circle cx="13" cy="13" r="4" fill="#fff"/><path d="M13 2v4" stroke="#fff" stroke-width="2"/></svg>
+      본당 청소 로봇
+    </span>
+    <span class="chip c-info">가상 시뮬레이션</span>
+  </div>
+
+  <div class="simbanner" role="note">
+    <span aria-hidden="true">ⓘ</span>
+    <span>아직 설치 전입니다. 지도 위 로봇은 실제 계획대로 움직이는 <b>가상 시뮬레이션</b>이고, 아래 기록은 예시입니다.</span>
+  </div>
+
+  <div class="now" style="margin-top:12px" aria-live="polite">
+    <div class="row">
+      <span class="state"><span id="pulse" class="pulse"></span><span id="stateText">청소 중</span></span>
+      <span class="clock" id="clock">토 09:00</span>
+    </div>
+    <div class="row">
+      <span class="bigpct" id="pct">0%</span>
+      <span class="small muted" id="pctLabel">오늘 청소한 카페트</span>
+    </div>
+    <div class="meter big"><i id="bar" style="width:0%"></i></div>
+    <div class="small muted" id="nowSub">로봇 3대가 구역을 나눠 청소하고 있어요.</div>
+  </div>
+
+  <div class="mapcard">
+    <div class="mapwrap"><canvas id="map" aria-label="본당 지도 위 로봇 위치와 청소한 자리"></canvas></div>
+    <div class="maplegend">
+      <span><i style="background:#4aa062;opacity:.6"></i>청소한 자리</span>
+      <span><i style="background:#a7b48a"></i>의자</span>
+      <span><i style="background:#f6dcd8;border:1px solid #c0392b"></i>로봇이 가지 않는 곳</span>
+    </div>
+    <div class="mapctl">
+      <button class="btn pri" id="play" type="button">일시정지</button>
+      <div class="seg" role="group" aria-label="재생 속도">
+        <button type="button" data-r="30">느리게</button>
+        <button type="button" data-r="60" aria-pressed="true">보통</button>
+        <button type="button" data-r="150">빠르게</button>
+      </div>
+      <button class="btn" id="restart" type="button">처음부터</button>
+    </div>
+  </div>
+
+  <div class="robots" id="robots"></div>
+
+  <h2 class="ps">지난 청소</h2>
+  <div class="stats">
+    <div class="stat"><small>날짜</small><b class="d" id="lDate">—</b></div>
+    <div class="stat"><small>청소율</small><b id="lCov">—</b></div>
+    <div class="stat"><small>걸린 시간</small><b id="lRun">—</b></div>
+    <div class="stat"><small>청소한 넓이</small><b id="lArea">—</b></div>
+  </div>
+  <div class="card soft" style="margin-top:8px;display:flex;align-items:center;gap:10px">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#7f8f63" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="#7f8f63" stroke-width="2"/></svg>
+    <span>다음 청소 <b id="next">—</b></span>
+  </div>
+
+  <h2 class="ps">최근 12주 청소율</h2>
+  <div class="hist card" style="padding:10px"><svg id="hist" viewBox="0 0 520 190" role="img" aria-label="최근 12주 청소율 막대 그래프"></svg></div>
+  <p class="tiny muted" style="margin-top:6px">예시 기록입니다. 의자 밑과 벽 모서리까지 포함한 비율이라 90% 안팎이면 잘 청소된 것입니다.</p>
+
+  <h2 class="ps">어떻게 청소하나요?</h2>
+  <div class="how">
+    <div class="s">
+      <svg viewBox="0 0 52 52" aria-hidden="true"><rect x="2" y="2" width="48" height="48" rx="12" fill="#e9eee0"/><rect x="12" y="16" width="28" height="22" rx="4" fill="none" stroke="#4b5a35" stroke-width="2.5"/><path d="M12 22h28M19 12v6M33 12v6" stroke="#4b5a35" stroke-width="2.5"/></svg>
+      <p><b>매주 토요일 오전 9시</b>, 본당이 비어 있을 때 자동으로 시작합니다.</p>
+    </div>
+    <div class="s">
+      <svg viewBox="0 0 52 52" aria-hidden="true"><rect x="2" y="2" width="48" height="48" rx="12" fill="#e9eee0"/><circle cx="17" cy="30" r="6" fill="#2f6db0"/><circle cx="27" cy="22" r="6" fill="#c46f22"/><circle cx="37" cy="30" r="6" fill="#3f8a55"/></svg>
+      <p><b>로봇 3대가 구역을 나눠</b> 의자 밑까지 카페트만 청소합니다. 강단과 악기 주변은 가지 않습니다.</p>
+    </div>
+    <div class="s">
+      <svg viewBox="0 0 52 52" aria-hidden="true"><rect x="2" y="2" width="48" height="48" rx="12" fill="#e9eee0"/><path d="M14 36V18h24v18" fill="none" stroke="#4b5a35" stroke-width="2.5"/><path d="M20 30l4 4 8-9" fill="none" stroke="#2f8a4f" stroke-width="3"/></svg>
+      <p>끝나면 <b>기도실 복도</b>로 돌아가 먼지를 비우고 충전합니다. 결과가 이 페이지에 기록됩니다.</p>
+    </div>
+  </div>
+
+  <div class="callout sage" style="margin-top:18px;font-size:14px">
+    <b>사생활 보호</b>: 이 페이지에는 카메라 영상이 나오지 않습니다. 로봇 위치를 찾는 천장 카메라는 청소 시간에만 켜지고, 영상은 관리자만 볼 수 있습니다.
+  </div>
+
+  <footer class="foot">
+    <a href="overview.html">교역자·관리부용 안내</a>
+    <span>본당 #105 · 의자 223석 · 카페트 약 234 m²</span>
+  </footer>
+</div>
+
+<script src="assets/js/layout.js"></script>
+<script src="assets/js/sim.js"></script>
+<script>
+(function(){
+  "use strict";
+  const FALLBACK_STATUS={"sample":true,"last":{"date":"2026-10-10","runtime_min":77,"coverage":0.938,"area_m2":219},"next":{"date":"2026-10-17","time":"09:00"}};
+  const FALLBACK_HIST={"runs":[["2026-07-25",.93],["2026-08-01",.95],["2026-08-08",.91],["2026-08-15",.94],["2026-08-22",.874],["2026-08-29",.92],["2026-09-05",.95],["2026-09-12",.93],["2026-09-19",.9],["2026-09-26",.95],["2026-10-03",.91],["2026-10-10",.938]].map(([d,c])=>({date:d,coverage:c,runtime_min:72}))};
+  const DOW=["일","월","화","수","목","금","토"];
+  function korDate(iso,withDow){const d=new Date(iso+"T12:00:00");return (d.getMonth()+1)+"월 "+d.getDate()+"일"+(withDow?" ("+DOW[d.getDay()]+")":"");}
+  function korTime(t){const [h,m]=t.split(":").map(Number);return (h<12?"오전 ":"오후 ")+((h%12)||12)+"시"+(m?" "+m+"분":"");}
+
+  // 시뮬레이션
+  const sim=new CleaningSim();
+  const view=new SimView(document.getElementById("map"),sim,{zones:false});
+  const $=id=>document.getElementById(id);
+  const robotsEl=$("robots");
+  robotsEl.innerHTML=sim.robots.map(r=>`<div class="rb"><b><span class="dot" style="background:${r.color}"></span>${r.id}</b><span class="z">${r.def.zoneName}</span><span class="st" id="st${r.id}">—</span><div class="meter"><i id="bt${r.id}" style="width:100%;background:${r.color}"></i></div><span class="bt" id="btt${r.id}">배터리 100%</span></div>`).join("");
+  const player=new SimPlayer(sim,view,{rate:60,autoplay:true,loop:true,loopPause:7,reduceToEnd:true,onTick:tick});
+  const ST=SimUtil.STATE_KO;
+  function tick(){
+    const c=sim.coverage(),pct=Math.round(c*100);
+    $("pct").textContent=pct+"%"; $("bar").style.width=pct+"%";
+    $("clock").textContent="토 "+sim.clock();
+    let state="청소 중",sub="로봇 3대가 구역을 나눠 청소하고 있어요.",live=true;
+    if(sim.phase==="done"){state="청소 끝";sub="모두 도크로 돌아가 충전 중입니다. "+sim.summary.runtimeMin+"분 걸렸어요.";live=false;}
+    else if(sim.phase==="ready"){state="시작 전";live=false;}
+    else if(sim.robots.some(r=>r.state==="returning"||r.state==="emptying")) sub="청소를 마친 로봇이 복도로 돌아가고 있어요.";
+    else if(sim.robots.some(r=>r.state==="helping")) sub="먼저 끝난 로봇이 다른 구역을 돕고 있어요.";
+    else if(sim.robots.some(r=>r.state==="waiting")) sub="문은 한 번에 1대씩 지나가요. 차례를 기다리는 중입니다.";
+    if(sim.stopped) state="멈춤";
+    $("stateText").textContent=state; $("nowSub").textContent=sub;
+    $("pulse").className="pulse"+(live?"":" idle");
+    sim.robots.forEach(r=>{
+      $("st"+r.id).textContent=ST[r.state]||r.state;
+      $("bt"+r.id).style.width=Math.round(r.battery)+"%";
+      $("btt"+r.id).textContent="배터리 "+Math.round(r.battery)+"%";
+    });
+  }
+  const playBtn=$("play");
+  playBtn.addEventListener("click",()=>{player.playing=!player.playing;playBtn.textContent=player.playing?"일시정지":"재생";});
+  document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>{
+    document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed","false"));
+    b.setAttribute("aria-pressed","true"); player.rate=+b.dataset.r;
+  }));
+  $("restart").addEventListener("click",()=>{sim.reset();sim.start();player.playing=true;playBtn.textContent="일시정지";});
+  if(!player.playing) playBtn.textContent="재생";
+
+  // 기록
+  function showStatus(s){
+    $("lDate").textContent=korDate(s.last.date,true);
+    $("lCov").textContent=Math.round(s.last.coverage*100)+"%";
+    $("lRun").textContent=s.last.runtime_min+"분";
+    $("lArea").textContent=(s.last.area_m2||"—")+" m²";
+    $("next").textContent=korDate(s.next.date,true)+" "+korTime(s.next.time);
+  }
+  function showHist(hd){
+    const runs=hd.runs.slice(-12),svg=$("hist"),NS="http://www.w3.org/2000/svg";
+    svg.innerHTML="";
+    const E=(t,a,x)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;svg.appendChild(e);return e;};
+    const x0=34,y0=20,w=476,h=130,lo=.7,hi=1;
+    [.7,.8,.9,1].forEach(v=>{const y=y0+h-(v-lo)/(hi-lo)*h;E("line",{x1:x0,y1:y,x2:x0+w,y2:y,stroke:"#e5e8e1"});E("text",{x:x0-6,y:y+4,"text-anchor":"end","font-size":11,fill:"#5b6672"},Math.round(v*100)+"%");});
+    const bw=w/runs.length;
+    runs.forEach((r,i)=>{
+      const v=Math.max(lo,r.coverage),bh=(v-lo)/(hi-lo)*h,x=x0+i*bw+bw*.18,last=i===runs.length-1;
+      E("rect",{x,y:y0+h-bh,width:bw*.64,height:bh,rx:3,fill:last?"#3f8a55":"#a9c3a3"});
+      if(last) E("text",{x:x+bw*.32,y:y0+h-bh-6,"text-anchor":"middle","font-size":12,"font-weight":700,fill:"#1c2633"},Math.round(r.coverage*100)+"%");
+      if(i%2===runs.length%2||last){const d=new Date(r.date+"T12:00:00");E("text",{x:x+bw*.32,y:y0+h+18,"text-anchor":"middle","font-size":11,fill:"#5b6672"},(d.getMonth()+1)+"/"+d.getDate());}
+    });
+  }
+  showStatus(FALLBACK_STATUS); showHist(FALLBACK_HIST);
+  // 엣지 서버가 연결되면 API_BASE에 공개 API 주소를 넣습니다 (예: "https://cleaning-api.example.org"). 비어 있으면 저장소의 data/*.json을 씁니다.
+  const API_BASE="";
+  const src=p=>API_BASE?API_BASE+"/public/"+p:"data/"+p+".json";
+  fetch(src("status"),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(s=>{if(s&&s.last)showStatus(s);}).catch(()=>{});
+  fetch(src("history"),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(h=>{if(h&&h.runs)showHist(h);}).catch(()=>{});
+})();
+</script>
+</body>
+</html>

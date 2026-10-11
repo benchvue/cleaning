@@ -1,0 +1,40 @@
+{
+ "sample": true,
+ "mode": "simulation",
+ "updated": "2026-10-10T10:12:00-04:00",
+ "state": "idle",
+ "last": {
+  "date": "2026-10-10",
+  "start": "09:00",
+  "end": "10:17",
+  "runtime_min": 77,
+  "coverage": 0.938,
+  "area_m2": 219
+ },
+ "next": {
+  "date": "2026-10-17",
+  "time": "09:00"
+ },
+ "robots": [
+  {
+   "id": "R1",
+   "zone": "1열",
+   "state": "docked",
+   "battery": 100
+  },
+  {
+   "id": "R2",
+   "zone": "2·3열",
+   "state": "docked",
+   "battery": 100
+  },
+  {
+   "id": "R3",
+   "zone": "4·5열",
+   "state": "docked",
+   "battery": 100
+  }
+ ],
+ "chairs": 223,
+ "carpet_m2": 234
+}
