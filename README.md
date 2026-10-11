@@ -13,10 +13,16 @@
 |---|---|---|
 | [index.html](https://benchvue.github.io/cleaning/index.html) | 성도 (휴대폰) | 지금 청소 상황 가상 시뮬레이션, 지난 청소 기록, 다음 일정, 최근 12주 청소율. 카메라 영상은 없음 |
 | [overview.html](https://benchvue.github.io/cleaning/overview.html) | 교역자 · 관리부 | 기술 용어 없이 정리한 도입 안내: 토요일 아침 흐름, 본당 배치, 필요한 장비, 예산, 유지비(주·월·년), 기대 효과, 일정, 사생활·안전, 결정할 것, 자주 묻는 질문 |
-| [architecture.html](https://benchvue.github.io/cleaning/architecture.html) | 개발자 | 시스템 경계, 계층 구조, 운행 중 데이터 흐름 애니메이션, 좌표계, **AprilTag 위치 오차 분석(계산기 + 바닥 오차 지도)**, 설계 결정(ADR) |
+| [architecture.html](https://benchvue.github.io/cleaning/architecture.html) | 개발자 | 시스템 경계, 계층 구조, 운행 중 데이터 흐름 애니메이션, 좌표계, **AprilTag 위치 오차 분석(계산기 + 바닥 오차 지도)**, **Valetudo 생태계 활용 방식(기능 대응표)**, 설계 결정(ADR) |
 | [software.html](https://benchvue.github.io/cleaning/software.html) | 개발자 | Docker 서비스, 로봇·미션 상태도, 문 뮤텍스, 시퀀스, 데이터 흐름, 알고리즘(줄 생성·재배분·청소율), 칼만 위치 융합, DB, API·MQTT, 설정 파일, Windows 11 Docker 개발, 테스트 |
-| [hardware.html](https://benchvue.github.io/cleaning/hardware.html) | 개발자 | BOM, 물리 구성, 네트워크 VLAN, 전원(도크 회로 분리), 천장 카메라 배치, 태그 부착, 의자 통과 치수, 도크 자리, 설치·보정 절차, 예비 부품 |
+| [hardware.html](https://benchvue.github.io/cleaning/hardware.html) | 개발자 | BOM, **로봇 비교 (L40 Ultra Gen 2 vs X40 Ultra)**, 물리 구성, 네트워크 VLAN, 전원(도크 회로 분리), 천장 카메라 배치, 태그 부착, 의자 통과 치수, 도크 자리, 설치·보정 절차, 예비 부품 |
 | [maintain.html](https://benchvue.github.io/cleaning/maintain.html) | 관리자 · 개발자 | 실시간 지도와 제어(시작·일시정지·모두 복귀·긴급 정지), 로봇 상태, 이벤트, 일정 편집(매주·한 번·건너뛰기, JSON 내보내기/가져오기), 소모품, 기록 그래프. **아직 인증 없음** |
+
+## 로봇
+
+- 선택: [Dreame L40 Ultra Gen 2](https://www.dreametech.com/products/l40-ultra-gen2-robot-vacuum) ([Amazon B0FSJPFDPV](https://www.amazon.com/dp/B0FSJPFDPV?th=1)), 순정 펌웨어
+- 대안: Dreame X40 Ultra + [Valetudo](https://valetudo.cloud/) (루팅, 완전 로컬 제어)
+- Gen 2는 Valetudo 미지원이고, Matter는 제조사 OTA로 제공 예정입니다. 서버의 RobotPort·가상 로봇·지도 형식은 Valetudo capability에 맞춰 두어 로봇을 바꿔도 서버 코드는 같습니다.
 
 ## 핵심 숫자
 

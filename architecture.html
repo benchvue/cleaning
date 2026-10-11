@@ -31,6 +31,7 @@
   .kpi small{display:block;color:var(--muted);font-size:12px}
   .kpi b{font-family:var(--f-mono);font-size:19px;font-weight:500}
   td.mono{white-space:nowrap}
+  #valetudo td code{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -49,13 +50,13 @@
 <main class="wrap">
   <span class="audience">개발자용</span>
   <h1>청소 로봇 아키텍처</h1>
-  <p class="lede">Dreame L40 Ultra Gen 2 3대(순정 펌웨어)를 교회 엣지 서버가 Home Assistant·Matter로 지휘하고, 천장 카메라가 로봇 윗면 AprilTag로 위치를 잽니다. 이 페이지는 전체 구조와 위치 정확도를 다루고, 세부는 소프트웨어·하드웨어 문서로 나눴습니다.</p>
+  <p class="lede">Dreame L40 Ultra Gen 2 3대(순정 펌웨어)를 교회 엣지 서버가 Home Assistant(지금은 클라우드 통합, Matter OTA 후 로컬)로 지휘하고, 천장 카메라가 로봇 윗면 AprilTag로 위치를 잽니다. 이 페이지는 전체 구조와 위치 정확도를 다루고, 세부는 소프트웨어·하드웨어 문서로 나눴습니다.</p>
   <div class="doclinks" style="margin-top:16px">
     <a href="software.html"><b>소프트웨어 →</b><span class="small muted">서비스 구성, 상태도, 시퀀스, 데이터 흐름, API·MQTT, DB, 알고리즘, Docker 시뮬레이션</span></a>
     <a href="hardware.html"><b>하드웨어 →</b><span class="small muted">BOM, 네트워크·전원 구성, 카메라 배치, 태그 부착, 의자 통과 치수, 설치 절차</span></a>
   </div>
   <nav class="toc" aria-label="목차">
-    <a href="#context">1 시스템 경계</a><a href="#layers">2 계층</a><a href="#flow">3 운행 데이터 흐름</a><a href="#frames">4 좌표계</a><a href="#tag">5 AprilTag 오차</a><a href="#adr">6 설계 결정</a>
+    <a href="#context">1 시스템 경계</a><a href="#layers">2 계층</a><a href="#flow">3 운행 데이터 흐름</a><a href="#frames">4 좌표계</a><a href="#tag">5 AprilTag 오차</a><a href="#valetudo">6 Valetudo 생태계</a><a href="#adr">7 설계 결정</a>
   </nav>
 
   <section class="sec" id="context">
@@ -166,18 +167,88 @@
     <div class="callout"><b>권장</b>: 천장 높이를 실측한 뒤 위 계산기로 대수를 정합니다. 6 m 이상이면 <b>4K 카메라 4대(2×2) + 10 cm 태그</b>로 바닥 전체를 덮고, 그보다 낮으면 6대(3×2)가 필요합니다. 벽면 카메라 2대 안은 버립니다.</div>
   </section>
 
+  <section class="sec" id="valetudo">
+    <div class="secnum">6 · Valetudo 생태계</div>
+    <h2>Valetudo를 어떻게 쓰는가: 펌웨어는 못 올리고, 설계는 그대로 따른다</h2>
+    <p><a href="https://valetudo.cloud/" target="_blank" rel="noopener">Valetudo</a>는 루팅한 로봇 안에서 제조사 클라우드를 대신 돌며, 로컬 웹 UI·REST API·MQTT(Homie, Home Assistant 자동 등록)를 제공하는 오픈소스입니다. 공식 지원 목록에는 이름이 정확히 "L40 Ultra"인 1세대만 있고, <b>우리가 고른 L40 Ultra Gen 2는 없습니다.</b> 그래서 이 프로젝트는 Valetudo를 두 층으로 나눠 씁니다.</p>
+    <div class="grid2">
+      <div class="card" style="border-color:var(--sage)">
+        <h3><span class="chip c-good">지금 적용</span> 설계와 인터페이스를 빌려 씀</h3>
+        <ul class="plain small">
+          <li><b>RobotPort = Valetudo capability 이름</b>: <code>BasicControl</code>, <code>ZoneCleaning</code>, <code>MapSegmentation</code>, <code>GoToLocation</code>, <code>CombinedVirtualRestrictions</code>, <code>ConsumableMonitoring</code>, <code>AutoEmptyDockManualTrigger</code>, <code>CurrentStatistics</code>를 그대로 메서드로 씀.</li>
+          <li><b>SimAdapter는 Valetudo처럼 말함</b>: 가상 로봇 3대가 Valetudo와 같은 MQTT(Homie) 토픽 구조로 상태를 내고 명령을 받음. Fleet는 진짜 Valetudo 로봇과 가상 로봇을 구분하지 못함.</li>
+          <li><b>지도 교환 형식 = ValetudoMap JSON</b>: 층(바닥·벽·구역)과 엔터티(로봇 위치·충전대·경로·가상 벽·금지 구역) 구조를 내부 지도 형식으로 채택. 관리 페이지와 시뮬레이션이 같은 형식을 그림.</li>
+          <li><b>로컬 우선 원칙</b>: 원격 측정 없음, 영상은 교회 밖으로 안 나감. Valetudo의 "로봇은 로컬에서만" 원칙을 카메라·서버에도 적용.</li>
+        </ul>
+      </div>
+      <div class="card" style="border-color:var(--oak)">
+        <h3><span class="chip c-oak">선택지</span> 로봇을 X40 Ultra로 바꾸면 펌웨어까지 사용</h3>
+        <ul class="plain small">
+          <li>X40 Ultra는 지원 목록에 있고 루팅이 "비교적 쉬움", Dreame 브레이크아웃 PCB 권장, 보증 봉인 유지.</li>
+          <li>로봇마다 Valetudo가 돌고, 엣지 서버의 <code>ValetudoAdapter</code>가 로컬 MQTT·REST로 직접 지휘. <b>Dreame 클라우드도 Home Assistant 통합도 필요 없음.</b></li>
+          <li>로봇 자체 위치(<code>robot_position</code>)를 로컬 지도 데이터로 받아 위치 융합의 두 번째 측정으로 사용. 의자 밑에서 태그가 가려질 때 오차가 크게 줆.</li>
+          <li><code>AutoEmptyDockManualTrigger</code>로 먼지 비움 순서를 서버가 직접 정함 (도크 전원 문제 해결).</li>
+          <li>비교는 <a href="hardware.html#robotcmp">하드웨어 2장</a>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="fig wide"><svg id="dValetudo" viewBox="0 0 1000 520" role="img" aria-label="Gen 2 경로와 Valetudo 경로 비교"></svg></div>
+    <p class="cap">위: 현재 경로 (L40 Ultra Gen 2, 순정 펌웨어). 아래: Valetudo 경로 (X40 Ultra 루팅). 두 경로 모두 오른쪽의 같은 RobotPort로 들어가므로 Fleet·Coverage·웹은 바뀌지 않습니다.</p>
+
+    <h3 style="margin-top:6px">기능별 대응표</h3>
+    <div class="tbl"><table>
+      <thead><tr><th>RobotPort 메서드</th><th>Valetudo capability</th><th>Valetudo 쪽 호출 (X40)</th><th>L40 Ultra Gen 2 쪽 호출</th></tr></thead>
+      <tbody>
+        <tr><td><code>start / pause / stop / home</code></td><td>BasicControlCapability</td><td>MQTT <code>…/BasicControlCapability/operation/set</code></td><td>Matter RVC (OTA 예정) · 그 전엔 HA <code>vacuum.start</code> (클라우드)</td></tr>
+        <tr><td><code>clean_zone(rect_F)</code></td><td>ZoneCleaningCapability</td><td>MQTT <code>…/ZoneCleaningCapability/start/set</code> + <code>T_k⁻¹</code>로 변환한 좌표</td><td>HA dreame_vacuum 구역 청소 서비스 (클라우드)</td></tr>
+        <tr><td><code>clean_segments(ids)</code></td><td>MapSegmentationCapability</td><td>MQTT <code>…/MapSegmentationCapability/clean/set</code></td><td>HA 방 청소 서비스 · Matter ServiceArea (OTA 예정)</td></tr>
+        <tr><td><code>go_to(x, y)</code></td><td>GoToLocationCapability</td><td>MQTT <code>…/GoToLocationCapability/go/set</code></td><td><span class="chip c-bad">없음</span> 구역으로 대신</td></tr>
+        <tr><td><code>set_restrictions(no_go, walls)</code></td><td>CombinedVirtualRestrictionsCapability</td><td>REST <code>PUT /api/v2/robot/capabilities/CombinedVirtualRestrictionsCapability</code> ← <code>sanctuary.yaml</code></td><td>Dreamehome 앱에서 손으로 설정</td></tr>
+        <tr><td><code>get_pose()</code></td><td>지도 데이터 엔터티</td><td>MQTT <code>…/MapData/map-data</code> (retained) 의 <code>robot_position</code></td><td>HA 지도 엔터티 (클라우드, 수 초 지연) + 천장 카메라</td></tr>
+        <tr><td><code>consumables()</code> · <code>reset()</code></td><td>ConsumableMonitoringCapability</td><td>MQTT 소모품 속성 + <code>/reset</code></td><td>HA 센서 · 앱</td></tr>
+        <tr><td><code>stats()</code></td><td>CurrentStatistics · TotalStatistics</td><td>MQTT 통계 속성 (면적, 시간)</td><td>HA 센서</td></tr>
+        <tr><td><code>empty_dock()</code></td><td>AutoEmptyDockManualTrigger · AutoEmptyDockAutoEmptyControl</td><td>MQTT <code>…/trigger/set</code>, 자동 비움 끄기</td><td><span class="chip c-warn">제어 불가</span> 복귀 간격으로만 분산</td></tr>
+        <tr><td><code>set_carpet_boost(on)</code></td><td>CarpetModeControl</td><td>MQTT 속성</td><td>앱 설정</td></tr>
+      </tbody>
+    </table></div>
+    <p class="small muted">정확한 토픽 이름은 Valetudo 웹 UI의 Connectivity → MQTT 화면에 나오는 목록을 기준으로 합니다(접두어와 로봇 식별자가 설정값). 위 표는 capability 이름 기준의 구조입니다.</p>
+
+    <div class="grid2">
+      <div class="callout bad">
+        <b>L40 Ultra Gen 2의 현재 제약</b>
+        <ul>
+          <li>Dreame 제품 페이지 기준 <b>Matter는 "향후 OTA 업데이트로 제공 예정"</b>입니다. 그 전까지 명령은 Home Assistant dreame_vacuum(클라우드) 또는 앱 일정에 기댑니다.</li>
+          <li>dreame_vacuum 통합의 Gen 2 지원은 미확인입니다. 1대 시험에서 확인합니다.</li>
+          <li>둘 다 안 되면: 앱 일정으로 출발만 맞추고, 서버는 카메라로 감시·기록만 하는 "관찰 모드"로 축소.</li>
+        </ul>
+      </div>
+      <div class="callout sage">
+        <b>Valetudo를 쓸 때 지켜야 할 것</b>
+        <ul>
+          <li>Valetudo와 제조사 앱은 동시에 쓸 수 없고, 루팅은 사실상 되돌리기 어렵습니다.</li>
+          <li>지원 목록에 없는 로봇은 지원하지 않습니다. Gen 2·L40 Ultra AE·L40s Pro Ultra, 일부 시장의 "L40" 리배지 모델 문의는 하지 않습니다.</li>
+          <li>Valetudo는 한 로봇당 지도 하나만 지원합니다. 본당은 한 층이라 문제없습니다.</li>
+          <li>Valetudo 자체에는 여러 대 협업 기능이 없습니다. 협업은 우리 Fleet가 맡습니다.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="small muted">출처: <a href="https://valetudo.cloud/" target="_blank" rel="noopener">valetudo.cloud</a> · <a href="https://valetudo.cloud/pages/general/supported-robots.html" target="_blank" rel="noopener">지원 로봇</a> · <a href="https://valetudo.cloud/pages/integrations/mqtt.html" target="_blank" rel="noopener">MQTT 통합</a> · <a href="https://valetudo.cloud/pages/usage/capabilities-overview.html" target="_blank" rel="noopener">Capabilities</a> · <a href="https://valetudo.cloud/pages/general/why-not-valetudo.html" target="_blank" rel="noopener">Why not Valetudo?</a> · <a href="https://www.dreametech.com/products/l40-ultra-gen2-robot-vacuum" target="_blank" rel="noopener">Dreame L40 Ultra Gen2</a></p>
+  </section>
+
   <section class="sec" id="adr">
-    <div class="secnum">6 · 설계 결정</div>
+    <div class="secnum">7 · 설계 결정</div>
     <h2>주요 결정과 이유</h2>
     <div class="tbl"><table>
       <thead><tr><th>#</th><th>결정</th><th>이유</th><th>대안 / 되돌릴 조건</th></tr></thead>
       <tbody>
-        <tr><td class="mono">ADR-1</td><td>Dreame L40 Ultra Gen 2, 순정 펌웨어</td><td>Valetudo 지원 목록에 Gen 2가 없음. 신품 구매·보증 유지</td><td>Valetudo 지원 모델로 바꾸면 ValetudoAdapter 추가</td></tr>
-        <tr><td class="mono">ADR-2</td><td>명령은 Matter(로컬), 지도·소모품은 HA dreame_vacuum(클라우드)</td><td>명령 경로를 인터넷과 분리</td><td>Gen 2 통합이 안 되면 Matter + 카메라만으로 운영</td></tr>
+        <tr><td class="mono">ADR-1</td><td>Dreame L40 Ultra Gen 2, 순정 펌웨어</td><td>Valetudo 지원 목록에 Gen 2가 없음. 신품 구매·보증 유지</td><td>X40 Ultra + Valetudo로 바꾸면 ValetudoAdapter만 추가 (6장)</td></tr>
+        <tr><td class="mono">ADR-2</td><td>명령은 Matter(로컬, Gen 2는 OTA 예정), 그 전엔 HA dreame_vacuum(클라우드)</td><td>명령 경로를 인터넷과 분리하는 것이 목표</td><td>둘 다 안 되면 앱 일정 + 카메라 관찰 모드로 축소</td></tr>
         <tr><td class="mono">ADR-3</td><td>위치는 천장 카메라 + AprilTag</td><td>펌웨어와 무관하게 3대를 같은 좌표계로 추적</td><td>로봇 자체 위치가 충분히 정확하면 카메라 수 축소</td></tr>
         <tr><td class="mono">ADR-4</td><td>경로는 로봇이, 구역·순서·문은 서버가</td><td>순정 펌웨어는 경로를 외부에서 지정할 수 없음</td><td>—</td></tr>
         <tr><td class="mono">ADR-5</td><td>성도 페이지는 GitHub Pages 정적 + 공개 JSON</td><td>로그인 없음, 무료, 서버 부하 없음</td><td>실시간 위치는 공개 API를 Cloudflare 터널로</td></tr>
         <tr><td class="mono">ADR-6</td><td>관리 페이지 인증은 나중 (현재 없음)</td><td>개발 단계, 가상 데이터만 다룸</td><td>실제 로봇 연결 전 Cloudflare Access 필수</td></tr>
+        <tr><td class="mono">ADR-7</td><td>RobotPort·가상 로봇·지도 형식을 Valetudo에 맞춤</td><td>로봇을 Valetudo 지원 모델로 바꿔도 서버 코드가 그대로</td><td>—</td></tr>
       </tbody>
     </table></div>
   </section>
@@ -258,6 +329,42 @@
     ]
   });
 
+
+  // 6. Valetudo 경로 비교
+  D.flow("dValetudo",{
+    groups:[
+      {x:10,y:10,w:740,h:230,title:"현재: L40 Ultra Gen 2 · 순정 펌웨어 (Valetudo 미지원)",fill:"#f6f7f3",stroke:"#2f6db0"},
+      {x:10,y:270,w:740,h:240,title:"선택지: X40 Ultra · 루팅 + Valetudo (지원 목록)",fill:"#fdf6ee",stroke:"#c27c3a"}
+    ],
+    nodes:[
+      {id:"g2",x:30,y:50,w:180,h:60,title:"로봇 × 3",sub:"Dreame 펌웨어",kind:"blue"},
+      {id:"dc",x:280,y:40,w:190,h:52,title:"Dreame 클라우드",sub:"지도 · 상태 · 소모품",kind:"ext"},
+      {id:"app",x:280,y:160,w:190,h:52,title:"Dreamehome 앱",sub:"지도 편집 · 금지 구역 · 예비 일정",kind:"ext"},
+      {id:"ha",x:540,y:40,w:190,h:52,title:"Home Assistant",sub:"dreame_vacuum (클라우드)",kind:"blue"},
+      {id:"mt",x:540,y:160,w:190,h:52,title:"Matter 컨트롤러",sub:"RVC · Gen 2 OTA 예정",kind:"ext"},
+      {id:"vr",x:30,y:330,w:180,h:70,title:"로봇 × 3",sub:"Valetudo (aarch64)\n로컬 웹 UI",kind:"oak"},
+      {id:"mq",x:280,y:310,w:190,h:56,title:"MQTT (Homie)",sub:"상태 · 명령 · map-data",kind:"box"},
+      {id:"rest",x:280,y:420,w:190,h:56,title:"REST /api/v2",sub:"가상 벽 · 금지 구역 동기화",kind:"box"},
+      {id:"va",x:540,y:360,w:190,h:60,title:"ValetudoAdapter",sub:"좌표 변환 T_k⁻¹",kind:"oak"},
+      {id:"sim",x:540,y:440,w:190,h:52,title:"SimAdapter",sub:"같은 Valetudo 토픽을 흉내",kind:"sage"},
+      {id:"port",x:790,y:180,w:190,h:90,title:"RobotPort",sub:"Valetudo capability 이름\nFleet · Coverage · 웹",kind:"dark"},
+      {id:"cam",x:790,y:330,w:190,h:56,title:"천장 카메라 + 태그",sub:"두 경로 공통 위치",kind:"sage"}
+    ],
+    edges:[
+      {a:"g2",b:"dc",label:"Wi-Fi → 인터넷",dash:true},
+      {a:"dc",b:"ha",label:"폴링",dash:true},
+      {a:"g2",b:"app",dash:true,bend:30},
+      {a:"mt",b:"g2",label:"로컬 명령 (예정)",color:"#2f6db0",dash:true,bend:-20},
+      {a:"ha",b:"port",label:"상태 · 명령"},
+      {a:"mt",b:"port",dash:true},
+      {a:"vr",b:"mq",label:"로컬"},
+      {a:"vr",b:"rest",label:"로컬",bend:20},
+      {a:"mq",b:"va"},{a:"rest",b:"va"},
+      {a:"va",b:"port",label:"상태 · 명령 · 위치"},
+      {a:"sim",b:"va",label:"개발 중엔 이것",dash:true,color:"#4b5a35"},
+      {a:"cam",b:"port",label:"pose"}
+    ]
+  });
   // 4. 좌표계
   D.flow("dFrames",{
     nodes:[

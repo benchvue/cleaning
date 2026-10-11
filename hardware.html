@@ -24,7 +24,7 @@
   <h1>청소 로봇 하드웨어 설계</h1>
   <p class="lede">무엇을 사서 어디에 어떻게 연결하는지 정리했습니다. 치수는 의자 실측값과 Dreame 공식 사양을 쓰고, 본당 크기·천장 높이처럼 아직 재지 않은 값은 "추정"으로 표시했습니다.</p>
   <nav class="toc" aria-label="목차">
-    <a href="#bom">1 BOM</a><a href="#block">2 물리 구성</a><a href="#net">3 네트워크</a><a href="#power">4 전원</a><a href="#cams">5 카메라 배치</a><a href="#tag">6 태그 부착</a><a href="#chair">7 의자 통과</a><a href="#dock">8 도크 자리</a><a href="#install">9 설치·보정</a><a href="#spares">10 예비 부품</a>
+    <a href="#bom">1 BOM</a><a href="#robotcmp">2 로봇 (L40 vs X40)</a><a href="#block">3 물리 구성</a><a href="#net">4 네트워크</a><a href="#power">5 전원</a><a href="#cams">6 카메라 배치</a><a href="#tag">7 태그 부착</a><a href="#chair">8 의자 통과</a><a href="#dock">9 도크 자리</a><a href="#install">10 설치·보정</a><a href="#spares">11 예비 부품</a>
   </nav>
 
   <section class="sec" id="bom">
@@ -33,7 +33,7 @@
     <div class="tbl"><table>
       <thead><tr><th>품목</th><th class="r">수량</th><th>사양</th><th class="r">금액 (USD)</th><th>비고</th></tr></thead>
       <tbody>
-        <tr><td>Dreame L40 Ultra Gen 2</td><td class="r">3</td><td>35 × 35 × 9.7 cm, 25,000 Pa, LiDAR + 3D 구조광 + RGB, 최대 194분, 도크 45.7 × 34 × 59 cm, 먼지봉투 3.2 L</td><td class="r">1,497–1,947</td><td>1대 먼저 (1단계)</td></tr>
+        <tr><td><a href="https://www.amazon.com/dp/B0FSJPFDPV?th=1" target="_blank" rel="noopener">Dreame L40 Ultra Gen 2</a></td><td class="r">3</td><td>35 × 35 × 9.7 cm, 25,000 Pa, LiDAR + 3D 구조광 (카메라 없음), 최대 231분, 도크 45.7 × 34 × 59 cm, 먼지봉투 3.2 L · <a href="https://www.dreametech.com/products/l40-ultra-gen2-robot-vacuum" target="_blank" rel="noopener">공식 사양</a></td><td class="r">1,497–1,947</td><td>1대 먼저 (1단계)</td></tr>
         <tr><td>천장 PoE 카메라</td><td class="r">4</td><td>4K(8MP), 2.8 mm (H 103° / V 56°), RTSP·ONVIF, NTP, IR 끄기 가능</td><td class="r">320–550</td><td>천장 높이 &lt; 6 m면 6대</td></tr>
         <tr><td>PoE 스위치 (관리형)</td><td class="r">1</td><td>8포트, 802.3af/at, 예산 ≥ 65 W, VLAN, 포트별 PoE 끄기</td><td class="r">80–100</td><td>카메라 전원 스케줄</td></tr>
         <tr><td>엣지 미니 PC</td><td class="r">1</td><td>Intel N100–N305, RAM 16 GB, NVMe 512 GB, 2.5 GbE</td><td class="r">250–400</td><td>4K × 4 디코드는 1/2 축소·5 fps로</td></tr>
@@ -47,15 +47,65 @@
     </table></div>
   </section>
 
+  <section class="sec" id="robotcmp">
+    <div class="secnum">2 · 로봇</div>
+    <h2>Dreame L40 Ultra Gen 2를 쓰고, X40 Ultra는 대안으로 둡니다</h2>
+    <div class="grid2">
+      <div class="card" style="border-color:var(--r1)">
+        <h3>선택한 로봇: Dreame L40 Ultra Gen 2</h3>
+        <ul class="plain small">
+          <li>제조사 페이지: <a href="https://www.dreametech.com/products/l40-ultra-gen2-robot-vacuum" target="_blank" rel="noopener">dreametech.com · L40 Ultra Gen2</a></li>
+          <li>구매 링크 (Amazon, ASIN B0FSJPFDPV): <a href="https://www.amazon.com/dp/B0FSJPFDPV?th=1" target="_blank" rel="noopener">amazon.com/dp/B0FSJPFDPV</a></li>
+          <li>로봇 35 × 35 × 9.7 cm · 도크 45.7 × 34 × 59 cm · 먼지봉투 3.2 L (최대 100일) · 배터리 5,200 mAh, 최대 231분 (조용 모드)</li>
+          <li>장애물 회피는 <b>3D 구조광(레이저)</b>만 사용하며, 사물 인식용 카메라는 없습니다.</li>
+          <li>Matter는 "향후 OTA로 제공 예정"으로 표시돼 있습니다 (2026년 10월 기준).</li>
+        </ul>
+      </div>
+      <div class="card" style="border-color:var(--oak)">
+        <h3>대안: Dreame X40 Ultra (+ Valetudo)</h3>
+        <ul class="plain small">
+          <li>Valetudo 지원 목록에 있음. 루팅 비교적 쉬움, 브레이크아웃 PCB 권장, 보증 봉인 유지.</li>
+          <li>로봇 35 × 35 × 10.4 cm · 배터리 6,400 mAh · 최대 약 200분 · 12,000 Pa.</li>
+          <li>RGB 카메라 + 3D 구조광으로 약 120종 사물 인식 (Valetudo에서는 영상이 밖으로 나가지 않음).</li>
+          <li>정가 $1,899였던 이전 세대 상급 모델이라 재고 할인 가격 편차가 큼.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>항목</th><th>L40 Ultra Gen 2 <span class="chip c-info">선택</span></th><th>X40 Ultra</th><th>본당 기준 의미</th></tr></thead>
+      <tbody>
+        <tr><td>흡입력</td><td class="mono">25,000 Pa</td><td class="mono">12,000 Pa</td><td>둘 다 업무용 단모 카페트에 충분. Gen 2가 여유</td></tr>
+        <tr><td>로봇 크기</td><td class="mono">35 × 35 × 9.7 cm</td><td class="mono">35 × 35 × 10.4 cm</td><td>둘 다 의자 가로대(30 cm) 통과. 옆 방향 여유는 Gen 2 양쪽 2.7 cm, X40 2.5 cm</td></tr>
+        <tr><td>배터리 · 시간</td><td class="mono">5,200 mAh · 최대 231분</td><td class="mono">6,400 mAh · 최대 200분</td><td>70분 청소에 둘 다 충분 (중간 충전 없음)</td></tr>
+        <tr><td>장애물 회피</td><td>3D 구조광 (카메라 없음)</td><td>RGB 카메라 + 3D 구조광 (~120종)</td><td>의자 다리는 둘 다 LiDAR로 피함. 케이블 인식은 X40이 나음</td></tr>
+        <tr><td>주행</td><td>LDS LiDAR</td><td>LDS LiDAR</td><td>같음</td></tr>
+        <tr><td>도크 먼지 보관</td><td>최대 100일</td><td>최대 75일</td><td>주 1회 사용이라 둘 다 8주 이상</td></tr>
+        <tr><td>물걸레</td><td>회전 걸레 2개, 냉수 세척</td><td>회전 걸레 2개, 온수 세척 (~70 °C)</td><td>본당은 쓰지 않음. 물탱크 비움</td></tr>
+        <tr><td><b>Valetudo</b></td><td><span class="chip c-bad">미지원</span></td><td><span class="chip c-good">지원</span></td><td>X40이면 클라우드 없이 로컬 MQTT·REST로 완전 제어</td></tr>
+        <tr><td>서버 제어 경로</td><td>HA 클라우드 통합 · Matter (OTA 예정)</td><td>Valetudo 로컬 MQTT · REST</td><td>X40이 명령 지연·인터넷 의존 없음</td></tr>
+        <tr><td>로봇 위치 제공</td><td>클라우드 지도 (수 초 지연, Gen 2 통합 미확인)</td><td>로컬 <code>robot_position</code> 지도 데이터</td><td>X40이면 의자 밑 위치 오차 10–30 → 약 7–10 cm</td></tr>
+        <tr><td>구역·가상 벽 설정</td><td>앱에서 손으로</td><td>REST로 <code>sanctuary.yaml</code>에서 자동 동기화</td><td>의자 배치 프리셋 운영이 X40이 쉬움</td></tr>
+        <tr><td>먼지 비움 순서 제어</td><td>불가</td><td>가능 (수동 트리거)</td><td>도크 전원 분산을 서버가 보장</td></tr>
+        <tr><td>사생활</td><td>로봇에 카메라 없음</td><td>카메라 있으나 Valetudo는 외부 전송 없음</td><td>성도 설명은 Gen 2가 쉬움</td></tr>
+        <tr><td>설치 난이도</td><td>앱 등록만</td><td>로봇마다 브레이크아웃 PCB로 UART 루팅 (봉인 유지, 대당 약 1시간)</td><td>X40은 개발자 시간 필요</td></tr>
+        <tr><td>보증·지원</td><td>정상 보증, 제조사 지원</td><td>봉인 유지되나 제조사 앱 사용 불가</td><td>고장 시 Gen 2가 단순</td></tr>
+        <tr><td>가격 (대당)</td><td class="mono">$499–649 (할인 $570 근처)</td><td class="mono">정가 $1,899, 재고 할인 시 $450–900</td><td>X40이 $650 이하로 3대 구해지면 고려</td></tr>
+        <tr><td>제품 상태</td><td>현행 모델</td><td>이전 세대 (재고 소진 중)</td><td>X40은 같은 모델 3대 + 예비를 한 번에 사야 함</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout"><b>판단</b>: 이미 정한 대로 <b>L40 Ultra Gen 2로 시작</b>합니다. 1대 시험에서 서버 제어(dreame_vacuum 또는 Matter OTA)가 안 되거나, X40 Ultra를 대당 $650 이하로 4대(예비 포함) 구할 수 있으면 X40 + Valetudo로 바꿉니다. 소프트웨어는 RobotPort를 Valetudo 이름에 맞춰 두었으므로 어느 쪽이든 서버 코드는 같습니다 (<a href="architecture.html#valetudo">아키텍처 6장</a>).</div>
+    <p class="small muted">출처: <a href="https://www.dreametech.com/products/l40-ultra-gen2-robot-vacuum" target="_blank" rel="noopener">Dreame L40 Ultra Gen2</a> · <a href="https://www.dreametech.com/blogs/blog/l40-vs-l40s-vs-x40-robot-vacuum-comparison" target="_blank" rel="noopener">Dreame L40 vs L40s vs X40</a> · <a href="https://www.techadvisor.com/article/2443262/dreame-x40-ultra-review-2.html" target="_blank" rel="noopener">Tech Advisor X40 Ultra 리뷰</a> · <a href="https://www.ldlc.com/en/product/PB00666555.html" target="_blank" rel="noopener">LDLC X40 Ultra 사양</a> · <a href="https://valetudo.cloud/pages/general/supported-robots.html" target="_blank" rel="noopener">Valetudo 지원 로봇</a></p>
+  </section>
+
   <section class="sec" id="block">
-    <div class="secnum">2 · 물리 구성</div>
+    <div class="secnum">3 · 물리 구성</div>
     <h2>장비, 케이블, 전원</h2>
     <div class="fig wide"><svg id="dBlock" viewBox="0 0 1000 500" role="img" aria-label="하드웨어 블록 다이어그램"></svg></div>
     <div class="legend"><span><i style="background:#1c2633"></i>이더넷 (Cat6)</span><span><i style="background:#2f6db0"></i>Wi-Fi</span><span><i style="background:#c27c3a"></i>전원 (120 V)</span><span><i style="background:#b83a32"></i>화재 연동 신호</span></div>
   </section>
 
   <section class="sec" id="net">
-    <div class="secnum">3 · 네트워크</div>
+    <div class="secnum">4 · 네트워크</div>
     <h2>VLAN을 셋으로 나눠 카메라는 인터넷에 못 나가게</h2>
     <div class="grid2">
       <div class="tbl"><table>
@@ -81,7 +131,7 @@
   </section>
 
   <section class="sec" id="power">
-    <div class="secnum">4 · 전원</div>
+    <div class="secnum">5 · 전원</div>
     <h2>도크 3대를 한 회로에 꽂으면 안 됩니다</h2>
     <div class="grid2">
       <div class="tbl"><table>
@@ -101,7 +151,7 @@
   </section>
 
   <section class="sec" id="cams">
-    <div class="secnum">5 · 카메라 배치</div>
+    <div class="secnum">6 · 카메라 배치</div>
     <h2>천장 카메라 4대가 카페트 전체를 내려다봄</h2>
     <div class="fig wide"><svg id="dCams" viewBox="0 0 760 640" role="img" aria-label="천장 카메라 4대 배치와 화각"></svg></div>
     <div class="tbl"><table>
@@ -117,7 +167,7 @@
   </section>
 
   <section class="sec" id="tag">
-    <div class="secnum">6 · 태그 부착</div>
+    <div class="secnum">7 · 태그 부착</div>
     <h2>로봇 윗면 뒤쪽에 10 cm AprilTag</h2>
     <div class="grid2">
       <div class="fig"><svg viewBox="0 0 440 400" role="img" aria-label="로봇 윗면 태그 위치">
@@ -154,7 +204,7 @@
   </section>
 
   <section class="sec" id="chair">
-    <div class="secnum">7 · 의자 통과</div>
+    <div class="secnum">8 · 의자 통과</div>
     <h2>실측 의자와 로봇 치수</h2>
     <div class="grid2">
       <div class="fig"><svg viewBox="0 0 400 350" role="img" aria-label="정면도: 다리 사이 45.5 cm, 가로대 30 cm, 로봇 35 x 9.7 cm">
@@ -215,7 +265,7 @@
   </section>
 
   <section class="sec" id="dock">
-    <div class="secnum">8 · 도크 자리</div>
+    <div class="secnum">9 · 도크 자리</div>
     <h2>기도실 복도 도크 3대 배치</h2>
     <div class="fig wide"><svg viewBox="0 0 1000 300" role="img" aria-label="복도 도크 배치 치수">
       <rect width="1000" height="300" fill="#f6f7f3"/>
@@ -241,7 +291,7 @@
   </section>
 
   <section class="sec" id="install">
-    <div class="secnum">9 · 설치 · 보정</div>
+    <div class="secnum">10 · 설치 · 보정</div>
     <h2>순서대로 하면 하루 반</h2>
     <div class="grid2">
       <div class="card"><h3>1일차 오전: 네트워크·서버</h3><ol class="steps small">
@@ -253,7 +303,7 @@
       <div class="card"><h3>1일차 오후: 로봇·도크</h3><ol class="steps small">
         <li>도크 배치, 회로 분리 확인, 물탱크 비움, 온수·건조 끔</li>
         <li>로봇마다 앱에서 지도 작성 (의자 정위치 상태), 금지 구역 4곳·가상 벽 설정</li>
-        <li>원격 영상·사진 업로드 끔, 흡입 전용 모드, 카페트 강흡입 켬</li>
+        <li>흡입 전용 모드, 카페트 강흡입 켬, 펌웨어 업데이트 확인 (Matter OTA)</li>
         <li>AprilTag 부착, <code>t_tag</code> 측정</li>
       </ol></div>
       <div class="card"><h3>2일차 오전: 카메라·보정</h3><ol class="steps small">
@@ -273,7 +323,7 @@
   </section>
 
   <section class="sec" id="spares">
-    <div class="secnum">10 · 예비 부품</div>
+    <div class="secnum">11 · 예비 부품</div>
     <h2>교체 주기와 보관</h2>
     <div class="tbl"><table>
       <thead><tr><th>부품</th><th>교체 주기 (주 1회, 로봇당 약 80 m²)</th><th class="r">보관 수량</th></tr></thead>
